@@ -20,6 +20,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Fix Kotlin version
+        run: find . -type f \( -name "*.toml" -o -name "*.kts" -o -name "*.gradle" \) -exec sed -i 's/2\.2\.20/2.0.21/g' {} +
+
       - name: Build Debug APK
         run: gradle assembleDebug
 
