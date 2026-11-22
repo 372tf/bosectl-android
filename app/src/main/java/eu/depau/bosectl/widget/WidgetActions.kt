@@ -100,11 +100,15 @@ class SwitchDeviceAction : ActionCallback {
             }
             val nextDevice = boseDevices[(currentIdx + 1) % boseDevices.size]
 
-            // 切り替え中であることをウィジェット上に即時表示
+            // 切り替え中であることをウィジェット上に即時表示し、古いバッテリー残量を消去
             context.dataStore.edit { prefs ->
                 prefs[Prefs.CACHE_DEVICE_NAME] = nextDevice.name ?: "Switching..."
                 prefs[Prefs.CACHE_CONNECTED] = false
                 prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
+                prefs.remove(Prefs.CACHE_BAT_LEFT)
+                prefs.remove(Prefs.CACHE_BAT_RIGHT)
+                prefs.remove(Prefs.CACHE_BAT_CASE)
+                prefs.remove(Prefs.CACHE_BAT_OVERALL)
             }
             BoseWidget().updateAll(context)
 
