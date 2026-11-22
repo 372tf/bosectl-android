@@ -197,7 +197,7 @@ class BoseWidget : GlanceAppWidget() {
 
             if (starred.isEmpty()) {
                 Text(
-                    "Open the app to load your modes",
+                    "Switching...",
                     style = TextStyle(
                         color = TEXT_SUB_COLOR, fontSize = 12.sp
                     ),
