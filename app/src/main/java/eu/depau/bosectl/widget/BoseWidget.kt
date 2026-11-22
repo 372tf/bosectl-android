@@ -102,7 +102,7 @@ suspend fun publishWidgetPreview(context: Context) {
 }
 
 // フォルダ風カラー設定（ARGBの16進数: 先頭2桁が透明度 00=透明 〜 FF=不透明）
-private val WIDGET_BG_COLOR = ColorProvider(Color(0x33000000))       // フォルダ風の半透明グレー
+private val WIDGET_BG_COLOR = ColorProvider(Color(0x20000000))       // フォルダ風の半透明グレー
 private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF))   // 選択中ボタン: 白
 private val UNSELECTED_CHIP_COLOR = ColorProvider(Color(0x3DFFFFFF)) // 未選択ボタン: 半透明白グレー
 private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))    // 通常文字・アイコン: 白
