@@ -6,25 +6,26 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.util.Log
-import eu.depau.bosectl.bmap.BmapTransport
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.appwidget.updateAll
 import eu.depau.bosectl.bmap.AudioSettings
 import eu.depau.bosectl.bmap.BatteryStatus
-import eu.depau.bosectl.bmap.BoseAdvertisement
 import eu.depau.bosectl.bmap.BmapConnection
 import eu.depau.bosectl.bmap.BmapException
+import eu.depau.bosectl.bmap.BmapTransport
+import eu.depau.bosectl.bmap.BoseAdvertisement
 import eu.depau.bosectl.bmap.Favorites
 import eu.depau.bosectl.bmap.ModeConfig
 import eu.depau.bosectl.bmap.Op
 import eu.depau.bosectl.bmap.PairedDevice
 import eu.depau.bosectl.bmap.Spatial
 import eu.depau.bosectl.bmap.bmapPacket
+import eu.depau.bosectl.bmap.mergePairedDevices
 import eu.depau.bosectl.bmap.parseActiveSource
 import eu.depau.bosectl.bmap.parseAudioSettings
 import eu.depau.bosectl.bmap.parseBattery
-import eu.depau.bosectl.bmap.mergePairedDevices
 import eu.depau.bosectl.bmap.parseDeviceList
 import eu.depau.bosectl.bmap.parseFavorites
 import eu.depau.bosectl.bmap.parseModeConfig
@@ -32,8 +33,8 @@ import eu.depau.bosectl.widget.BoseWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +43,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 
 private const val TAG = "DeviceRepository"
 private const val POLL_FOREGROUND_MS = 2000L
@@ -162,29 +164,67 @@ object DeviceRepository {
     suspend fun savedDeviceMac(): String? =
         context.dataStore.data.first()[Prefs.DEVICE_MAC]
 
-    suspend fun setDevice(mac: String) {
+    private fun deviceCacheKey(mac: String) =
+        stringPreferencesKey("dev_cache_${mac.uppercase()}")
+
+    private fun clearActiveWidgetCache(prefs: MutablePreferences) {
+        prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
+        prefs.remove(Prefs.LAST_SEEN_AT)
+        prefs.remove(Prefs.LAST_SEEN_AVAILABLE)
+        prefs.remove(Prefs.CACHE_DEVICE_NAME)
+        prefs.remove(Prefs.CACHE_CONNECTED)
+        prefs.remove(Prefs.CACHE_CURRENT_MODE)
+        prefs.remove(Prefs.CACHE_SPATIAL)
+        prefs.remove(Prefs.CACHE_BAT_LEFT)
+        prefs.remove(Prefs.CACHE_BAT_RIGHT)
+        prefs.remove(Prefs.CACHE_BAT_CASE)
+        prefs.remove(Prefs.CACHE_BAT_OVERALL)
+        prefs.remove(Prefs.CACHE_STARRED)
+        prefs.remove(Prefs.CACHE_ANC)
+        prefs.remove(Prefs.CACHE_CNC)
+        prefs.remove(Prefs.CACHE_TOUCH)
+        prefs.remove(Prefs.CACHE_LINK)
+        prefs.remove(Prefs.CACHE_PLAYING_HERE)
+    }
+
+    private fun restoreDeviceCache(
+        prefs: MutablePreferences,
+        mac: String,
+        fallbackName: String?,
+    ) {
+        prefs[Prefs.CACHE_CONNECTED] = false
+        val raw = prefs[deviceCacheKey(mac)]
+        if (raw == null) {
+            if (fallbackName != null) prefs[Prefs.CACHE_DEVICE_NAME] = fallbackName
+            return
+        }
+        runCatching {
+            val o = JSONObject(raw)
+            prefs[Prefs.CACHE_DEVICE_NAME] =
+                o.optString("name").takeIf { it.isNotEmpty() } ?: (fallbackName ?: "Bose Control")
+            if (o.has("mode")) prefs[Prefs.CACHE_CURRENT_MODE] = o.getInt("mode")
+            if (o.has("spatial")) prefs[Prefs.CACHE_SPATIAL] = o.getInt("spatial")
+            if (o.has("anc")) prefs[Prefs.CACHE_ANC] = o.getBoolean("anc")
+            if (o.has("cnc")) prefs[Prefs.CACHE_CNC] = o.getInt("cnc")
+            if (o.has("touch")) prefs[Prefs.CACHE_TOUCH] = o.getBoolean("touch")
+            if (o.has("bat_l")) prefs[Prefs.CACHE_BAT_LEFT] = o.getInt("bat_l")
+            if (o.has("bat_r")) prefs[Prefs.CACHE_BAT_RIGHT] = o.getInt("bat_r")
+            if (o.has("bat_c")) prefs[Prefs.CACHE_BAT_CASE] = o.getInt("bat_c")
+            if (o.has("bat_o")) prefs[Prefs.CACHE_BAT_OVERALL] = o.getInt("bat_o")
+            o.optString("starred").takeIf { it.isNotEmpty() }?.let {
+                prefs[Prefs.CACHE_STARRED] = it
+            }
+        }.onFailure {
+            if (fallbackName != null) prefs[Prefs.CACHE_DEVICE_NAME] = fallbackName
+        }
+    }
+
+    suspend fun setDevice(mac: String, fallbackName: String? = null) {
         _state.value = BoseState()
         context.dataStore.edit { prefs ->
-            val oldMac = prefs[Prefs.DEVICE_MAC]
-            val currentStarred = prefs[Prefs.CACHE_STARRED]
-            if (oldMac != null && !currentStarred.isNullOrEmpty()) {
-                prefs[stringPreferencesKey("cache_starred_$oldMac")] = currentStarred
-            }
-            val nextStarred = prefs[stringPreferencesKey("cache_starred_$mac")]
-
+            clearActiveWidgetCache(prefs)
             prefs[Prefs.DEVICE_MAC] = mac
-            prefs[Prefs.CACHE_CONNECTED] = false
-            prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
-            prefs.remove(Prefs.CACHE_BAT_LEFT)
-            prefs.remove(Prefs.CACHE_BAT_RIGHT)
-            prefs.remove(Prefs.CACHE_BAT_CASE)
-            prefs.remove(Prefs.CACHE_BAT_OVERALL)
-            prefs.remove(Prefs.CACHE_CURRENT_MODE)
-            if (!nextStarred.isNullOrEmpty()) {
-                prefs[Prefs.CACHE_STARRED] = nextStarred
-            } else {
-                prefs.remove(Prefs.CACHE_STARRED)
-            }
+            restoreDeviceCache(prefs, mac, fallbackName)
         }
         disconnect()
     }
@@ -265,4 +305,194 @@ object DeviceRepository {
                 }
                 // Ask the device to push state changes; without this it stays silent
                 // and we have to poll. Format comes from the official app's
-                // NotificationByFblock [9.2
+                // NotificationByFblock [9.2].
+                notificationsActive = runCatching { conn.enableNotifications() }
+                    .onSuccess { Log.i(TAG, "Notifications enabled for blocks $it") }
+                    .onFailure { Log.w(TAG, "Notification subscribe failed", it) }
+                    .getOrDefault(emptyList())
+                    .isNotEmpty()
+                _state.value = _state.value.copy(connected = true, busy = false, link = link)
+                // Push is the mechanism; polling only covers firmware that refuses
+                // the subscription.
+                if (!notificationsActive) startPolling()
+                startLinkWatchdog()
+                startKeepalive(link)
+                lastConnectFailedAt = 0L
+                conn
+            } catch (e: Exception) {
+                lastConnectFailedAt = System.currentTimeMillis()
+                _state.value = _state.value.copy(
+                    connected = false, busy = false, lastError = e.message
+                )
+                persistWidgetCache()
+                throw e
+            }
+        }
+
+    fun disconnect() {
+        stopPolling()
+        stopLinkWatchdog()
+        stopKeepalive()
+        unsolicitedJob?.cancel()
+        unsolicitedJob = null
+        connection?.close()
+        connection = null
+        _state.value = _state.value.copy(connected = false, busy = false, link = null)
+        scope.launch { persistWidgetCache() }
+    }
+
+    /**
+     * Run device work on the repository scope so screen navigation can't
+     * cancel it mid-request. Errors land in state.lastError.
+     */
+    fun runAsync(block: suspend () -> Unit) {
+        scope.launch {
+            runCatching { block() }.onFailure { Log.w(TAG, "Device action failed", it) }
+        }
+    }
+
+    /**
+     * Connect because the device showed up or the user asked. [automatic] must
+     * be true for the ACL-receiver path — nobody tapped anything there, so it
+     * gets neither classic initiation nor a bypass of the failure cooldown.
+     */
+    fun onDeviceAppeared(automatic: Boolean = false) = runAsync {
+        ensureConnected(automatic)
+        refresh()
+    }
+
+    fun onDeviceDisappeared() = disconnect()
+
+    /**
+     * Connect + refresh only if the earbuds are actually reachable — app launch
+     * must not spin on "connecting" when they're away.
+     *
+     * A classic link means RFCOMM is available. Failing that, a *recent BLE
+     * sighting* means the LE transport is worth a try even with no classic link,
+     * which is how the app can show state while the earbuds play to another
+     * device. With neither, don't touch the radio.
+     */
+    fun autoConnectIfAvailable() = runAsync {
+        if (state.value.connected) {
+            refresh()
+        } else if (isAclUp() || isNearby()) {
+            ensureConnected(automatic = true)
+            refresh()
+        }
+    }
+
+    /**
+     * A nearby sighting is only useful if something acts on it: connect over LE
+     * so state and the widget go live while the earbuds play to another device.
+     *
+     * Rate-limited because advertisements arrive every couple of seconds, and
+     * strictly [automatic] so it can never take the audio (see [linkOrder]).
+     */
+    private suspend fun autoConnectOnSighting() {
+        if (state.value.connected || state.value.busy) return
+        if (connection?.isConnected == true) return
+        if (savedDeviceMac() == null) return
+        // Nothing to try: the only permitted transport needs a link we don't have.
+        if (linkOrder(linkPreference(), classicUsable(automatic = true), automatic = true)
+                .isEmpty()
+        ) return
+        val now = System.currentTimeMillis()
+        if (now - lastAutoConnectAt < AUTO_CONNECT_RETRY_MS) return
+        lastAutoConnectAt = now
+        // Bounded: this runs while a broadcast receiver is held open.
+        withTimeoutOrNull(AUTO_CONNECT_BUDGET_MS) {
+            runCatching {
+                ensureConnected(automatic = true)
+                refresh()
+            }.onFailure { Log.d(TAG, "Auto-connect on sighting failed: ${it.message}") }
+        }
+    }
+
+    /**
+     * Nothing tells us when an LE link dies — there is no ACL broadcast for it,
+     * and with pushes working there are no requests to fail either. Without this
+     * the UI and the widget would keep claiming "connected" forever.
+     */
+    private fun startLinkWatchdog() {
+        if (watchdogJob?.isActive == true) return
+        watchdogJob = scope.launch {
+            while (true) {
+                delay(LINK_WATCHDOG_MS)
+                if (connection?.isConnected == false) {
+                    Log.i(TAG, "Link went away; clearing state")
+                    disconnect()
+                    return@launch
+                }
+            }
+        }
+    }
+
+    private fun stopLinkWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+    }
+
+    /**
+     * The earbuds hang up an idle LE link after ~40 s — `newState=0` with
+     * `status=19`, `GATT_CONN_TERMINATE_PEER_USER`. Once `[9.2]` is subscribed we
+     * have nothing to send, so a quiet link gets reaped and the widget goes stale.
+     *
+     * So poke it with the most inert GET there is: `[0.1]` BMAP version is a
+     * constant string, reads nothing, and changes nothing.
+     *
+     * Classic needs none of this — that link is held up by the audio connection.
+     */
+    private fun startKeepalive(link: LinkLayer) {
+        stopKeepalive()
+        if (link != LinkLayer.LE) return
+        keepaliveJob = scope.launch {
+            while (true) {
+                delay(LE_KEEPALIVE_MS)
+                val conn = connection?.takeIf { it.isConnected } ?: return@launch
+                runCatching { conn.raw(bmapPacket(0, 1, Op.GET)) }
+                    .onFailure { Log.d(TAG, "Keepalive failed: ${it.message}") }
+            }
+        }
+    }
+
+    private fun stopKeepalive() {
+        keepaliveJob?.cancel()
+        keepaliveJob = null
+    }
+
+    /** Was a matching advertisement seen recently enough to bother connecting? */
+    private suspend fun isNearby(): Boolean {
+        if (linkPreference() == LinkPreference.CLASSIC_ONLY) return false
+        val seen = context.dataStore.data.first()[Prefs.LAST_SEEN_AT] ?: return false
+        return System.currentTimeMillis() - seen < PRESENCE_FRESH_MS
+    }
+
+    /**
+     * A batch of Bose advertisements from the system scan (see [PresenceScanner]).
+     * Runs from a broadcast receiver, so [onDone] releases its wake lock.
+     */
+    fun onAdvertisementsSeen(
+        sightings: List<Pair<String, BoseAdvertisement>>,
+        onDone: () -> Unit = {},
+    ) {
+        scope.launch {
+            try {
+                val saved = savedDeviceMac() ?: return@launch
+                val prefs = context.dataStore.data.first()
+                val knownProduct = prefs[Prefs.DEVICE_BLE_PRODUCT_ID]
+
+                // An address match is proof. Otherwise fall back to "same model
+                // as ours", which is all the advertisement offers: the rotating
+                // address is Bose's own resolvable scheme, not a standard RPA we
+                // could resolve with an IRK.
+                // ponytail: another set of the same model in range would count as
+                // ours. Harmless for a presence hint — it only ever causes an LE
+                // connect attempt that then fails.
+                val exact = sightings.firstOrNull { it.first.equals(saved, ignoreCase = true) }
+                val match = exact
+                    ?: sightings.firstOrNull { it.second.bleProductId == knownProduct }
+                    ?: return@launch
+
+                context.dataStore.edit {
+                    it[Prefs.LAST_SEEN_AT] = System.currentTimeMillis()
+                    it[Prefs.LAST_SEEN_AVAILABLE] = match.second
