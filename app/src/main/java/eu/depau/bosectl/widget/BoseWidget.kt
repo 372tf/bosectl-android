@@ -99,12 +99,13 @@ suspend fun publishWidgetPreview(context: Context) {
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
+// 4x2でも空間オーディオ入り2段レイアウトになるよう高さを調整
 private val VERTICAL_PADDING = 8.dp
 private val HORIZONTAL_PADDING = 10.dp
 private val HEADER_HEIGHT = 24.dp
-private val MODE_BUTTON_HEIGHT = 76.dp
-private val SPATIAL_HEIGHT = 38.dp
-private val TOGGLE_HEIGHT = 40.dp
+private val MODE_BUTTON_HEIGHT = 52.dp
+private val SPATIAL_HEIGHT = 32.dp
+private val TOGGLE_HEIGHT = 38.dp
 private val STEPPER_HEIGHT = 28.dp
 private val CHIP_HEIGHT = 32.dp
 private val GAP = 6.dp
@@ -117,11 +118,11 @@ private val BUTTONS_MIN_HEIGHT =
     VERTICAL_PADDING * 2 + HEADER_HEIGHT + MODE_BUTTON_HEIGHT + GAP + SPATIAL_HEIGHT
 
 private val CHIP_ICON_MIN_WIDTH = 300.dp
-private val MODE_BUTTON_MIN_WIDTH = 68.dp
+private val MODE_BUTTON_MIN_WIDTH = 56.dp
 private val MODE_CHIP_MIN_WIDTH = 56.dp
 private val WIDE_MIN_WIDTH = 420.dp
 private val TWO_BY_TWO_MAX_WIDTH = 240.dp
-private const val NARROW_MAX_MODES = 3
+private const val NARROW_MAX_MODES = 4
 
 private fun modeSlots(width: Dp, cellWidth: Dp): Int =
     ((width - HORIZONTAL_PADDING * 2) / cellWidth).toInt().coerceAtLeast(1)
@@ -153,7 +154,7 @@ class BoseWidget : GlanceAppWidget() {
     @Composable
     private fun WidgetContent(prefs: Preferences?) {
         val size = LocalSize.current
-        val is2x2 = size.width < TWO_BY_TWO_MAX_WIDTH && size.height >= 120.dp
+        val is2x2 = size.width < TWO_BY_TWO_MAX_WIDTH && size.height >= 115.dp
         val compact = size.height < BUTTONS_MIN_HEIGHT
         val showControls = size.height >= CONTROLS_MIN_HEIGHT
         val wideChips = size.width >= CHIP_ICON_MIN_WIDTH
@@ -194,20 +195,20 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 2x2専用レイアウト: 4モード(2x2) + 空間オーディオ(3列)
+            // 2x2専用レイアウト: スリム化した4モード(2x2) + 空間オーディオ(3列)
             if (is2x2) {
                 val modes4 = starred.take(4)
                 val row1 = modes4.take(2)
                 val row2 = modes4.drop(2).take(2)
 
                 Spacer(GlanceModifier.defaultWeight())
-                ModeGridRow(row1, currentMode, connected, GlanceModifier.height(34.dp))
+                ModeGridRow(row1, currentMode, connected, GlanceModifier.height(28.dp))
                 if (row2.isNotEmpty()) {
                     Spacer(GlanceModifier.height(4.dp))
-                    ModeGridRow(row2, currentMode, connected, GlanceModifier.height(34.dp))
+                    ModeGridRow(row2, currentMode, connected, GlanceModifier.height(28.dp))
                 }
                 Spacer(GlanceModifier.height(5.dp))
-                CompactSpatialRow(spatial, connected, GlanceModifier.height(30.dp))
+                CompactSpatialRow(spatial, connected, GlanceModifier.height(28.dp))
                 return@Column
             }
 
@@ -258,7 +259,7 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /** 2x2グリッド用のモード2列行 */
+    /** 2x2グリッド用のモード2列行（アイコン・ボタン高さをスリム化） */
     @Composable
     private fun ModeGridRow(
         modes: List<CachedMode>,
@@ -274,18 +275,18 @@ class BoseWidget : GlanceAppWidget() {
                     modifier = GlanceModifier
                         .defaultWeight()
                         .background(chipColor(selected))
-                        .cornerRadius(10.dp)
+                        .cornerRadius(9.dp)
                         .fillMaxHeight()
                         .clickable(
                             actionRunCallback<SetModeAction>(SetModeAction.params(mode.idx))
                         )
-                        .padding(horizontal = 4.dp),
+                        .padding(horizontal = 3.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(promptDrawable(mode.promptId), selected, 14.dp)
+                    TintedIcon(promptDrawable(mode.promptId), selected, 12.dp)
                     Spacer(GlanceModifier.width(3.dp))
-                    Text(mode.name, style = chipText(selected, 11.sp), maxLines = 1)
+                    Text(mode.name, style = chipText(selected, 10.5.sp), maxLines = 1)
                 }
             }
         }
@@ -305,26 +306,26 @@ class BoseWidget : GlanceAppWidget() {
         )
         Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             options.forEachIndexed { i, option ->
-                if (i > 0) Spacer(GlanceModifier.width(3.dp))
+                if (i > 0) Spacer(GlanceModifier.width(2.dp))
                 val selected = connected && spatial == option.first
                 Row(
                     modifier = GlanceModifier
                         .defaultWeight()
                         .background(chipColor(selected))
-                        .cornerRadius(10.dp)
+                        .cornerRadius(9.dp)
                         .clickable(
                             actionRunCallback<SetSpatialAction>(
                                 SetSpatialAction.params(option.first)
                             )
                         )
                         .fillMaxHeight()
-                        .padding(horizontal = 2.dp),
+                        .padding(horizontal = 1.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(option.third, selected, 12.dp)
+                    TintedIcon(option.third, selected, 11.dp)
                     Spacer(GlanceModifier.width(2.dp))
-                    Text(option.second, style = chipText(selected, 10.sp), maxLines = 1)
+                    Text(option.second, style = chipText(selected, 9.5.sp), maxLines = 1)
                 }
             }
         }
@@ -500,24 +501,24 @@ class BoseWidget : GlanceAppWidget() {
     ) {
         Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             visible(modes, cols).forEachIndexed { i, mode ->
-                if (i > 0) Spacer(GlanceModifier.width(6.dp))
+                if (i > 0) Spacer(GlanceModifier.width(4.dp))
                 val selected = connected && mode.idx == currentMode
                 Column(
                     modifier = GlanceModifier
                         .defaultWeight()
                         .background(chipColor(selected))
-                        .cornerRadius(14.dp)
+                        .cornerRadius(12.dp)
                         .fillMaxHeight()
                         .clickable(
                             actionRunCallback<SetModeAction>(SetModeAction.params(mode.idx))
                         )
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                        .padding(horizontal = 2.dp, vertical = 3.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(promptDrawable(mode.promptId), selected, 22.dp)
-                    Spacer(GlanceModifier.height(3.dp))
-                    Text(mode.name, style = chipText(selected, 11.sp), maxLines = 1)
+                    TintedIcon(promptDrawable(mode.promptId), selected, 18.dp)
+                    Spacer(GlanceModifier.height(2.dp))
+                    Text(mode.name, style = chipText(selected, 10.5.sp), maxLines = 1)
                 }
             }
             Overflow(modes, cols)
@@ -543,7 +544,7 @@ class BoseWidget : GlanceAppWidget() {
                     modifier = GlanceModifier
                         .defaultWeight()
                         .background(chipColor(selected))
-                        .cornerRadius(14.dp)
+                        .cornerRadius(12.dp)
                         .clickable(
                             actionRunCallback<SetSpatialAction>(
                                 SetSpatialAction.params(option.first)
@@ -554,9 +555,9 @@ class BoseWidget : GlanceAppWidget() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(option.third, selected, 16.dp)
+                    TintedIcon(option.third, selected, 15.dp)
                     Spacer(GlanceModifier.width(4.dp))
-                    Text(option.second, style = chipText(selected), maxLines = 1)
+                    Text(option.second, style = chipText(selected, 11.sp), maxLines = 1)
                 }
             }
         }
