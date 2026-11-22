@@ -61,7 +61,6 @@ import eu.depau.bosectl.ui.MainActivity
 import eu.depau.bosectl.ui.promptDrawable
 import kotlinx.coroutines.flow.first
 
-/** Cached battery levels; null means the device does not report that cell. */
 private data class Battery(
     val left: Int?, val right: Int?, val case: Int?, val overall: Int?,
 )
@@ -70,10 +69,8 @@ class BoseWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = BoseWidget()
 }
 
-/** Roughly the declared 4x2 target, so the preview shows the mode-button layout. */
 private val PREVIEW_SIZE = DpSize(250.dp, 200.dp)
 
-/** Stand-in for the picker preview until there is real cached state to show. */
 private val PREVIEW_PREFS = mutablePreferencesOf(
     Prefs.CACHE_DEVICE_NAME to "QC Ultra Earbuds",
     Prefs.CACHE_CONNECTED to true,
@@ -96,68 +93,42 @@ private val PREVIEW_PREFS = mutablePreferencesOf(
     ),
 )
 
-/**
- * Render the widget and hand it to the launcher as a generated preview (API 35+).
- *
- * The platform rate-limits this to ~2 calls an hour and a refusal simply leaves
- * the previous preview in place, so publish on every launch and let it throttle:
- * that keeps the cached state in the preview as fresh as the API allows.
- */
 suspend fun publishWidgetPreview(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return
     val result = GlanceAppWidgetManager(context).setWidgetPreviews(BoseWidgetReceiver::class)
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
-// Section heights. Breakpoints are DERIVED from these rather than guessed from
-// launcher cell counts: the canonical "(dp + 30) / 70" cell formula is legacy
-// and wrong on modern launchers (a 3x2 area reports 262x220dp, which it calls
-// 4x3), and cell size varies by device, launcher and grid setting anyway.
-// Asking "does the content fit in the space I was given?" is portable by
-// construction.
-private val VERTICAL_PADDING = 16.dp
-private val HORIZONTAL_PADDING = 16.dp
-private val HEADER_HEIGHT = 28.dp
-private val MODE_BUTTON_HEIGHT = 84.dp
-private val SPATIAL_HEIGHT = 42.dp
-private val TOGGLE_HEIGHT = 44.dp
+// 4x1に綺麗に収まるように余白と高さをスリム化
+private val VERTICAL_PADDING = 8.dp
+private val HORIZONTAL_PADDING = 10.dp
+private val HEADER_HEIGHT = 24.dp
+private val MODE_BUTTON_HEIGHT = 76.dp
+private val SPATIAL_HEIGHT = 38.dp
+private val TOGGLE_HEIGHT = 40.dp
 private val STEPPER_HEIGHT = 28.dp
-private val CHIP_HEIGHT = 40.dp
-private val GAP = 8.dp
+private val CHIP_HEIGHT = 32.dp
+private val GAP = 6.dp
 
-/** Tallest layout needs everything; below this the controls are dropped. */
 private val CONTROLS_MIN_HEIGHT =
     VERTICAL_PADDING * 2 + HEADER_HEIGHT + MODE_BUTTON_HEIGHT + GAP + SPATIAL_HEIGHT +
         GAP + TOGGLE_HEIGHT + GAP + STEPPER_HEIGHT
 
-/** Below this even mode buttons + head tracking don't fit: use the chip strip. */
 private val BUTTONS_MIN_HEIGHT =
     VERTICAL_PADDING * 2 + HEADER_HEIGHT + MODE_BUTTON_HEIGHT + GAP + SPATIAL_HEIGHT
 
-private val CHIP_ICON_MIN_WIDTH = 300.dp      // icons in the chip strip / toggles
-// Measured: a 3-column widget reports 262dp, which leaves ~73dp per button
-// after padding and gaps — an icon plus a short label fits fine at that size.
+private val CHIP_ICON_MIN_WIDTH = 300.dp
 private val MODE_BUTTON_MIN_WIDTH = 68.dp
-private val MODE_CHIP_MIN_WIDTH = 62.dp       // a chip is text only, so narrower
-// A taste call rather than a fit calculation: three across is as busy as a
-// narrow widget should get, even though a fourth button would technically fit.
+private val MODE_CHIP_MIN_WIDTH = 56.dp
 private val WIDE_MIN_WIDTH = 420.dp
 private const val NARROW_MAX_MODES = 3
 
-/** How many mode cells fit across [width], for the given per-cell minimum. */
 private fun modeSlots(width: Dp, cellWidth: Dp): Int =
     ((width - HORIZONTAL_PADDING * 2) / cellWidth).toInt().coerceAtLeast(1)
 
-/** How many mode cells fit; reserve a slot for the overflow marker if needed. */
 private fun visible(modes: List<CachedMode>, cols: Int): List<CachedMode> =
     if (modes.size <= cols) modes else modes.take((cols - 1).coerceAtLeast(1))
 
-/**
- * Layout adapts to the widget size:
- *   1 row  — header + mode chips (with icons too when wider than 3 cells)
- *   2 rows — header + square mode buttons + head tracking
- *   3 rows — adds ANC/touch toggles and a noise-cancelling stepper
- */
 class BoseWidget : GlanceAppWidget() {
 
     override val sizeMode = SizeMode.Exact
@@ -170,15 +141,9 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    // The picker preview is the real widget, rendered by [publishWidgetPreview].
-    // API 31-34 get the static previewLayout instead.
     override val previewSizeMode = SizeMode.Responsive(setOf(PREVIEW_SIZE))
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        // Real cached state when there is some, so the preview shows the modes
-        // and battery the widget would actually display. Before the first
-        // connection there is nothing to show, and the live widget's "open the
-        // app to load your modes" makes a poor advert — hence the sample.
         val cached = runCatching { context.dataStore.data.first() }.getOrNull()
         val prefs = cached?.takeIf { decodeCachedModes(it[Prefs.CACHE_STARRED]).isNotEmpty() }
             ?: PREVIEW_PREFS
@@ -213,7 +178,7 @@ class BoseWidget : GlanceAppWidget() {
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(GlanceTheme.colors.widgetBackground)
-                .cornerRadius(24.dp)
+                .cornerRadius(20.dp)
                 .padding(horizontal = HORIZONTAL_PADDING, vertical = VERTICAL_PADDING),
         ) {
             Header(deviceName, battery, connected, link, playingHere)
@@ -228,9 +193,6 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // Everything keeps its natural height; slack becomes space *between*
-            // sections (header / modes+head-tracking / ANC+level), so nothing
-            // grows out of proportion.
             if (compact) {
                 Spacer(GlanceModifier.defaultWeight())
                 ModeChipRow(
@@ -258,8 +220,6 @@ class BoseWidget : GlanceAppWidget() {
 
             if (showControls) {
                 Spacer(GlanceModifier.defaultWeight())
-                // Each toggle gets its own container: side by side without one,
-                // the first switch reads as belonging to the second label.
                 Row(modifier = GlanceModifier.fillMaxWidth().height(TOGGLE_HEIGHT)) {
                     ToggleChip(
                         checked = anc, label = "ANC", showIcon = wideChips,
@@ -280,7 +240,6 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /** Switch in a tonal container, with an optional leading icon. */
     @Composable
     private fun RowScope.ToggleChip(
         checked: Boolean,
@@ -316,20 +275,6 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /**
-     * How the app is talking to the earbuds, in one glyph.
-     *
-     * Replaces the old "Disconnected" label, which was both wrong (over LE the
-     * earbuds are connected — just not to us for audio) and wider than the
-     * battery cells could spare.
-     *
-     * | Glyph                | Meaning                                     |
-     * |----------------------|---------------------------------------------|
-     * | `bluetooth_disabled` | no BMAP link at all                         |
-     * | `media_bluetooth_on` | the earbuds are playing *this* phone         |
-     * | `bluetooth_searching`| LE link; audio is elsewhere or not playing  |
-     * | `bluetooth_connected`| classic link; connected but not playing here |
-     */
     @Composable
     private fun LinkStatusIcon(connected: Boolean, link: String?, playingHere: Boolean) {
         val (icon, description) = when {
@@ -346,9 +291,9 @@ class BoseWidget : GlanceAppWidget() {
                 if (connected) GlanceTheme.colors.primary
                 else GlanceTheme.colors.onSurfaceVariant
             ),
-            modifier = GlanceModifier.size(16.dp),
+            modifier = GlanceModifier.size(15.dp),
         )
-        if (connected) Spacer(GlanceModifier.width(6.dp))
+        if (connected) Spacer(GlanceModifier.width(4.dp))
     }
 
     @Composable
@@ -362,24 +307,23 @@ class BoseWidget : GlanceAppWidget() {
         Row(
             modifier = GlanceModifier
                 .fillMaxWidth()
-                .cornerRadius(12.dp)
+                .cornerRadius(10.dp)
                 .clickable(actionStartActivity<MainActivity>())
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = 2.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // App attribution icon, per the widget quality guidelines.
             Image(
                 provider = ImageProvider(R.mipmap.ic_launcher),
                 contentDescription = null,
-                modifier = GlanceModifier.size(20.dp).cornerRadius(10.dp),
+                modifier = GlanceModifier.size(18.dp).cornerRadius(9.dp),
             )
-            Spacer(GlanceModifier.width(8.dp))
+            Spacer(GlanceModifier.width(6.dp))
             Text(
                 name,
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                 ),
                 maxLines = 1,
                 modifier = GlanceModifier.defaultWeight(),
@@ -400,14 +344,14 @@ class BoseWidget : GlanceAppWidget() {
     private fun BatteryCell(icon: Int, percent: Int?) {
         if (percent == null) return
         Row(
-            modifier = GlanceModifier.padding(start = 6.dp),
+            modifier = GlanceModifier.padding(start = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Image(
                 provider = ImageProvider(icon),
                 contentDescription = null,
                 colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
-                modifier = GlanceModifier.size(14.dp),
+                modifier = GlanceModifier.size(13.dp),
             )
             Text(
                 "$percent%",
@@ -419,7 +363,6 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /** Compact strip for the 1-row layout. */
     @Composable
     private fun ModeChipRow(
         modes: List<CachedMode>,
@@ -431,33 +374,32 @@ class BoseWidget : GlanceAppWidget() {
     ) {
         Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             visible(modes, cols).forEachIndexed { i, mode ->
-                if (i > 0) Spacer(GlanceModifier.width(6.dp))
+                if (i > 0) Spacer(GlanceModifier.width(4.dp))
                 val selected = connected && mode.idx == currentMode
                 Row(
                     modifier = GlanceModifier
                         .defaultWeight()
                         .background(chipColor(selected))
-                        .cornerRadius(14.dp)
+                        .cornerRadius(12.dp)
                         .fillMaxHeight()
                         .clickable(
                             actionRunCallback<SetModeAction>(SetModeAction.params(mode.idx))
                         )
-                        .padding(horizontal = 4.dp),
+                        .padding(horizontal = 2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (showIcon) {
-                        TintedIcon(promptDrawable(mode.promptId), selected, 16.dp)
-                        Spacer(GlanceModifier.width(4.dp))
+                        TintedIcon(promptDrawable(mode.promptId), selected, 14.dp)
+                        Spacer(GlanceModifier.width(3.dp))
                     }
-                    Text(mode.name, style = chipText(selected), maxLines = 1)
+                    Text(mode.name, style = chipText(selected, 11.sp), maxLines = 1)
                 }
             }
             Overflow(modes, cols)
         }
     }
 
-    /** Square icon buttons, mirroring the app's mode cards. */
     @Composable
     private fun ModeButtonRow(
         modes: List<CachedMode>,
@@ -530,10 +472,9 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /** Stepper: Glance has no slider, so the level moves one notch per tap. */
     @Composable
     private fun CncRow(cncLevel: Int, enabled: Boolean) {
-        val display = 10 - cncLevel  // wire scale is inverted
+        val display = 10 - cncLevel
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -576,7 +517,6 @@ class BoseWidget : GlanceAppWidget() {
         )
     }
 
-    /** "+N" cell opening the app — app widgets cannot scroll horizontally. */
     @Composable
     private fun Overflow(modes: List<CachedMode>, cols: Int) {
         val hidden = modes.size - visible(modes, cols).size
@@ -614,7 +554,7 @@ class BoseWidget : GlanceAppWidget() {
         if (selected) GlanceTheme.colors.primary else GlanceTheme.colors.secondaryContainer
 
     @Composable
-    private fun chipText(selected: Boolean, fontSize: TextUnit = 12.sp) = TextStyle(
+    private fun chipText(selected: Boolean, fontSize: TextUnit = 11.sp) = TextStyle(
         color = if (selected) GlanceTheme.colors.onPrimary
         else GlanceTheme.colors.onSecondaryContainer,
         fontSize = fontSize,
