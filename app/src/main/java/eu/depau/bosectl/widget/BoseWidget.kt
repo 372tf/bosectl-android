@@ -194,7 +194,7 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 2x2専用レイアウト: 下の余白を半分に抑えた配置
+            // 2x2専用レイアウト
             if (is2x2) {
                 val modes4 = starred.take(4)
                 val row1 = modes4.take(2)
@@ -223,8 +223,8 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 4x2 / 3x2 / 4x3 レイアウト
-            Spacer(GlanceModifier.height(6.dp))
+            // 4x2 / 3x2 / 4x3 レイアウト: 2x2と同じ下の余白バランスに統一
+            Spacer(GlanceModifier.defaultWeight())
             ModeButtonRow(
                 starred, currentMode, connected,
                 cols = modeSlots(size.width, MODE_BUTTON_MIN_WIDTH).let {
@@ -237,6 +237,10 @@ class BoseWidget : GlanceAppWidget() {
                 spatial, connected,
                 modifier = GlanceModifier.height(SPATIAL_HEIGHT),
             )
+
+            if (!showControls) {
+                Spacer(GlanceModifier.height(2.dp))
+            }
 
             if (showControls) {
                 Spacer(GlanceModifier.defaultWeight())
