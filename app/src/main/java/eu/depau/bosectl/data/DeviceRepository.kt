@@ -162,7 +162,11 @@ object DeviceRepository {
         context.dataStore.data.first()[Prefs.DEVICE_MAC]
 
     suspend fun setDevice(mac: String) {
-        context.dataStore.edit { it[Prefs.DEVICE_MAC] = mac }
+        _state.value = BoseState()
+        context.dataStore.edit {
+            it.clear()
+            it[Prefs.DEVICE_MAC] = mac
+        }
         disconnect()
     }
 
