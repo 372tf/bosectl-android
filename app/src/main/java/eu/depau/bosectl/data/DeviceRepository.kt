@@ -1,4 +1,4 @@
-Package eu.depau.bosectl.data
+package eu.depau.bosectl.data
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
