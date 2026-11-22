@@ -102,15 +102,15 @@ suspend fun publishWidgetPreview(context: Context) {
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
-// フォルダ風カラー＆枠線設定
-private val WIDGET_BORDER_COLOR = ColorProvider(Color(0x4DFFFFFF)) // 外周の枠線色（半透明の白）
-private val BORDER_WIDTH = 1.dp                                    // 外周の枠線の太さ
-private val WIDGET_BG_COLOR = ColorProvider(Color(0x559DA4AF))     // フォルダ風の半透明グレー
-private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF)) // 選択中ボタン: 白
+// フォルダ風カラー設定（現在の 0x559DA4AF を維持＋外周の枠線を追加）
+private val WIDGET_BORDER_COLOR = ColorProvider(Color(0x4DFFFFFF))   // 外周の枠線色（半透明の白）
+private val BORDER_WIDTH = 1.dp                                      // 外周の枠線の太さ
+private val WIDGET_BG_COLOR = ColorProvider(Color(0x559DA4AF))       // フォルダ風の半透明グレー（変更なし）
+private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF))   // 選択中ボタン: 白
 private val UNSELECTED_CHIP_COLOR = ColorProvider(Color(0x3DFFFFFF)) // 未選択ボタン: 半透明白グレー
-private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))  // 通常文字・アイコン: 白
-private val TEXT_SUB_COLOR = ColorProvider(Color(0xE6F1F5F9))      // バッテリー等の補助文字: 明るい白
-private val TEXT_SELECTED_COLOR = ColorProvider(Color(0xFF1F242D)) // 選択中ボタン内の文字・アイコン: 濃グレー
+private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))    // 通常文字・アイコン: 白
+private val TEXT_SUB_COLOR = ColorProvider(Color(0xE6F1F5F9))        // バッテリー等の補助文字: 明るい白
+private val TEXT_SELECTED_COLOR = ColorProvider(Color(0xFF1F242D))   // 選択中ボタン内の文字・アイコン: 濃グレー
 
 private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
@@ -189,7 +189,7 @@ class BoseWidget : GlanceAppWidget() {
         val touch = prefs?.get(Prefs.CACHE_TOUCH) ?: true
         val starred = decodeCachedModes(prefs?.get(Prefs.CACHE_STARRED))
 
-        // 外側のBoxで外周の枠線（フチ取り）を描画
+        // 外側のBoxで外周の枠線を描画
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
