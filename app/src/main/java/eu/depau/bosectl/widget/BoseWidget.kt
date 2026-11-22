@@ -102,7 +102,7 @@ suspend fun publishWidgetPreview(context: Context) {
 }
 
 // フォルダ風カラー設定（ARGBの16進数: 先頭2桁が透明度 00=透明 〜 FF=不透明）
-private val WIDGET_BG_COLOR = ColorProvider(Color(0x20000000))       // フォルダ風の半透明グレー
+private val WIDGET_BG_COLOR = ColorProvider(Color(0x559DA4AF))       // フォルダ風の半透明グレー
 private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF))   // 選択中ボタン: 白
 private val UNSELECTED_CHIP_COLOR = ColorProvider(Color(0x3DFFFFFF)) // 未選択ボタン: 半透明白グレー
 private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))    // 通常文字・アイコン: 白
@@ -413,16 +413,20 @@ class BoseWidget : GlanceAppWidget() {
             modifier = GlanceModifier
                 .fillMaxWidth()
                 .cornerRadius(10.dp)
-                .clickable(actionStartActivity<MainActivity>())
                 .padding(horizontal = 2.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // アプリアイコン部分をタップ → アプリ本体を開く
             Image(
                 provider = ImageProvider(R.mipmap.ic_launcher),
-                contentDescription = null,
-                modifier = GlanceModifier.size(18.dp).cornerRadius(9.dp),
+                contentDescription = "Open app",
+                modifier = GlanceModifier
+                    .size(18.dp)
+                    .cornerRadius(9.dp)
+                    .clickable(actionStartActivity<MainActivity>()),
             )
             Spacer(GlanceModifier.width(6.dp))
+            // 機器名部分をタップ → 別のペアリング済みBose機器へ即切り替え
             Text(
                 name,
                 style = TextStyle(
@@ -431,7 +435,9 @@ class BoseWidget : GlanceAppWidget() {
                     fontSize = 13.sp,
                 ),
                 maxLines = 1,
-                modifier = GlanceModifier.defaultWeight(),
+                modifier = GlanceModifier
+                    .defaultWeight()
+                    .clickable(actionRunCallback<SwitchDeviceAction>()),
             )
             LinkStatusIcon(connected, link, playingHere)
             if (connected) {
