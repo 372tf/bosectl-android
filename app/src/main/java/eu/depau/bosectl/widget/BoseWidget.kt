@@ -102,7 +102,7 @@ suspend fun publishWidgetPreview(context: Context) {
 private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
 private val HEADER_HEIGHT = 24.dp
-private val MODE_BUTTON_HEIGHT = 52.dp
+private val MODE_BUTTON_HEIGHT = 57.dp
 private val SPATIAL_HEIGHT = 36.dp
 private val TOGGLE_HEIGHT = 38.dp
 private val STEPPER_HEIGHT = 28.dp
@@ -233,7 +233,7 @@ class BoseWidget : GlanceAppWidget() {
                 },
                 modifier = GlanceModifier.height(MODE_BUTTON_HEIGHT),
             )
-            Spacer(GlanceModifier.height(if (is4x2) 12.dp else GAP))
+            Spacer(GlanceModifier.height(if (is4x2) 9.dp else GAP))
             SpatialRow(
                 spatial, connected,
                 modifier = GlanceModifier.height(SPATIAL_HEIGHT),
@@ -521,8 +521,8 @@ class BoseWidget : GlanceAppWidget() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(promptDrawable(mode.promptId), selected, 18.dp)
-                    Spacer(GlanceModifier.height(2.dp))
+                    TintedIcon(promptDrawable(mode.promptId), selected, 19.dp)
+                    Spacer(GlanceModifier.height(2.5.dp))
                     Text(mode.name, style = chipText(selected, 11.sp), maxLines = 1)
                 }
             }
