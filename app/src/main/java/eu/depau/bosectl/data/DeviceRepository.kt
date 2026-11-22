@@ -6,26 +6,24 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.util.Log
-import androidx.datastore.preferences.core.MutablePreferences
+import eu.depau.bosectl.bmap.BmapTransport
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.appwidget.updateAll
 import eu.depau.bosectl.bmap.AudioSettings
 import eu.depau.bosectl.bmap.BatteryStatus
+import eu.depau.bosectl.bmap.BoseAdvertisement
 import eu.depau.bosectl.bmap.BmapConnection
 import eu.depau.bosectl.bmap.BmapException
-import eu.depau.bosectl.bmap.BmapTransport
-import eu.depau.bosectl.bmap.BoseAdvertisement
 import eu.depau.bosectl.bmap.Favorites
 import eu.depau.bosectl.bmap.ModeConfig
 import eu.depau.bosectl.bmap.Op
 import eu.depau.bosectl.bmap.PairedDevice
 import eu.depau.bosectl.bmap.Spatial
 import eu.depau.bosectl.bmap.bmapPacket
-import eu.depau.bosectl.bmap.mergePairedDevices
 import eu.depau.bosectl.bmap.parseActiveSource
 import eu.depau.bosectl.bmap.parseAudioSettings
 import eu.depau.bosectl.bmap.parseBattery
+import eu.depau.bosectl.bmap.mergePairedDevices
 import eu.depau.bosectl.bmap.parseDeviceList
 import eu.depau.bosectl.bmap.parseFavorites
 import eu.depau.bosectl.bmap.parseModeConfig
@@ -33,8 +31,8 @@ import eu.depau.bosectl.widget.BoseWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,7 +41,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import org.json.JSONObject
 
 private const val TAG = "DeviceRepository"
 private const val POLL_FOREGROUND_MS = 2000L
@@ -164,67 +161,11 @@ object DeviceRepository {
     suspend fun savedDeviceMac(): String? =
         context.dataStore.data.first()[Prefs.DEVICE_MAC]
 
-    private fun deviceCacheKey(mac: String) =
-        stringPreferencesKey("dev_cache_${mac.uppercase()}")
-
-    private fun clearActiveWidgetCache(prefs: MutablePreferences) {
-        prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
-        prefs.remove(Prefs.LAST_SEEN_AT)
-        prefs.remove(Prefs.LAST_SEEN_AVAILABLE)
-        prefs.remove(Prefs.CACHE_DEVICE_NAME)
-        prefs.remove(Prefs.CACHE_CONNECTED)
-        prefs.remove(Prefs.CACHE_CURRENT_MODE)
-        prefs.remove(Prefs.CACHE_SPATIAL)
-        prefs.remove(Prefs.CACHE_BAT_LEFT)
-        prefs.remove(Prefs.CACHE_BAT_RIGHT)
-        prefs.remove(Prefs.CACHE_BAT_CASE)
-        prefs.remove(Prefs.CACHE_BAT_OVERALL)
-        prefs.remove(Prefs.CACHE_STARRED)
-        prefs.remove(Prefs.CACHE_ANC)
-        prefs.remove(Prefs.CACHE_CNC)
-        prefs.remove(Prefs.CACHE_TOUCH)
-        prefs.remove(Prefs.CACHE_LINK)
-        prefs.remove(Prefs.CACHE_PLAYING_HERE)
-    }
-
-    private fun restoreDeviceCache(
-        prefs: MutablePreferences,
-        mac: String,
-        fallbackName: String?,
-    ) {
-        prefs[Prefs.CACHE_CONNECTED] = false
-        val raw = prefs[deviceCacheKey(mac)]
-        if (raw == null) {
-            if (fallbackName != null) prefs[Prefs.CACHE_DEVICE_NAME] = fallbackName
-            return
-        }
-        runCatching {
-            val o = JSONObject(raw)
-            prefs[Prefs.CACHE_DEVICE_NAME] =
-                o.optString("name").takeIf { it.isNotEmpty() } ?: (fallbackName ?: "Bose Control")
-            if (o.has("mode")) prefs[Prefs.CACHE_CURRENT_MODE] = o.getInt("mode")
-            if (o.has("spatial")) prefs[Prefs.CACHE_SPATIAL] = o.getInt("spatial")
-            if (o.has("anc")) prefs[Prefs.CACHE_ANC] = o.getBoolean("anc")
-            if (o.has("cnc")) prefs[Prefs.CACHE_CNC] = o.getInt("cnc")
-            if (o.has("touch")) prefs[Prefs.CACHE_TOUCH] = o.getBoolean("touch")
-            if (o.has("bat_l")) prefs[Prefs.CACHE_BAT_LEFT] = o.getInt("bat_l")
-            if (o.has("bat_r")) prefs[Prefs.CACHE_BAT_RIGHT] = o.getInt("bat_r")
-            if (o.has("bat_c")) prefs[Prefs.CACHE_BAT_CASE] = o.getInt("bat_c")
-            if (o.has("bat_o")) prefs[Prefs.CACHE_BAT_OVERALL] = o.getInt("bat_o")
-            o.optString("starred").takeIf { it.isNotEmpty() }?.let {
-                prefs[Prefs.CACHE_STARRED] = it
-            }
-        }.onFailure {
-            if (fallbackName != null) prefs[Prefs.CACHE_DEVICE_NAME] = fallbackName
-        }
-    }
-
-    suspend fun setDevice(mac: String, fallbackName: String? = null) {
+    suspend fun setDevice(mac: String) {
         _state.value = BoseState()
-        context.dataStore.edit { prefs ->
-            clearActiveWidgetCache(prefs)
-            prefs[Prefs.DEVICE_MAC] = mac
-            restoreDeviceCache(prefs, mac, fallbackName)
+        context.dataStore.edit {
+            it.clear()
+            it[Prefs.DEVICE_MAC] = mac
         }
         disconnect()
     }
@@ -258,10 +199,10 @@ object DeviceRepository {
         for (link in order) {
             try {
                 val transport = openTransport(link, context, device)
-                Log.i(TAG, "Connected to ${device.address} over$link")
+                Log.i(TAG, "Connected to ${device.address} over $link")
                 return transport to link
             } catch (e: Exception) {
-                Log.w(TAG, "$link transport failed:${e.message}")
+                Log.w(TAG, "$link transport failed: ${e.message}")
                 lastError = e
             }
         }
@@ -495,4 +436,434 @@ object DeviceRepository {
 
                 context.dataStore.edit {
                     it[Prefs.LAST_SEEN_AT] = System.currentTimeMillis()
-                    it[Prefs.LAST_SEEN_AVAILABLE] = match.second
+                    it[Prefs.LAST_SEEN_AVAILABLE] = match.second.availableToConnect
+                    if (exact != null) it[Prefs.DEVICE_BLE_PRODUCT_ID] = exact.second.bleProductId
+                }
+                _state.value = _state.value.copy(
+                    lastSeenAt = System.currentTimeMillis(),
+                    lastSeenAvailable = match.second.availableToConnect,
+                )
+                // The point of detecting them: go live without being asked.
+                autoConnectOnSighting()
+            } finally {
+                onDone()
+            }
+        }
+    }
+
+    /** Re-arm the system scan if the user turned nearby detection on. */
+    fun startPresenceScanIfEnabled(onDone: () -> Unit = {}) {
+        scope.launch {
+            try {
+                if (context.dataStore.data.first()[Prefs.PRESENCE_ENABLED] == true) {
+                    PresenceScanner.start(context)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not re-arm the nearby scan", e)
+            } finally {
+                onDone()
+            }
+        }
+    }
+
+    /** Load the persisted sighting so a freshly started UI isn't blank. */
+    fun restorePresence() = runAsync {
+        val prefs = context.dataStore.data.first()
+        _state.value = _state.value.copy(
+            lastSeenAt = prefs[Prefs.LAST_SEEN_AT],
+            lastSeenAvailable = prefs[Prefs.LAST_SEEN_AVAILABLE] ?: false,
+        )
+    }
+
+    /**
+     * May this connect reach for RFCOMM? The classic link must be up, and an
+     * [automatic] connect must additionally never be the thing that triggers
+     * classic authentication or pairing — a secure RFCOMM connect before the
+     * system authenticated the link is exactly what fed the chime/unpair storm
+     * (see CLAUDE.md). Bonded + A2DP connected means auth already happened.
+     */
+    @SuppressLint("MissingPermission")
+    private suspend fun classicUsable(automatic: Boolean): Boolean {
+        if (!isAclUp()) return false
+        if (!automatic) return true
+        val mac = savedDeviceMac() ?: return false
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+            ?: return false
+        if (adapter.getRemoteDevice(mac).bondState != BluetoothDevice.BOND_BONDED) return false
+        // ponytail: adapter-wide A2DP state, not per-device — there is one saved
+        // device in practice. Go per-device via getProfileProxy if that changes.
+        return adapter.getProfileConnectionState(BluetoothProfile.A2DP) ==
+                BluetoothProfile.STATE_CONNECTED
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun isAclUp(): Boolean {
+        val mac = savedDeviceMac() ?: return false
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+            ?: return false
+        val device = adapter.getRemoteDevice(mac)
+        // ponytail: hidden-but-ubiquitous BluetoothDevice.isConnected(). If the
+        // reflection ever gets blocked, fall back to "is any A2DP sink connected"
+        // — coarser, but connecting must never be something the app does on its
+        // own initiative, so guessing "yes" is the wrong default.
+        return runCatching {
+            device.javaClass.getMethod("isConnected").invoke(device) as Boolean
+        }.getOrElse {
+            adapter.getProfileConnectionState(BluetoothProfile.A2DP) ==
+                    BluetoothProfile.STATE_CONNECTED
+        }
+    }
+
+    /**
+     * Fallback for devices that refuse the [9.2] notification subscription.
+     * When the subscription works — verified on QC Ultra Earbuds — the device
+     * pushes [31.3]/[31.10] immediately and this never runs.
+     */
+    private fun startPolling() {
+        if (pollJob?.isActive == true) return
+        pollJob = scope.launch {
+            while (true) {
+                delay(if (visibleScreens > 0) POLL_FOREGROUND_MS else POLL_BACKGROUND_MS)
+                if (!state.value.connected) continue
+                runCatching { refreshLive() }
+                    .onFailure { Log.d(TAG, "Poll failed: ${it.message}") }
+            }
+        }
+    }
+
+    private fun stopPolling() {
+        pollJob?.cancel()
+        pollJob = null
+    }
+
+    /** Screens report visibility so polling can slow down when nobody is looking. */
+    fun onScreenVisible() {
+        visibleScreens++
+        autoConnectIfAvailable()
+    }
+
+    fun onScreenHidden() {
+        visibleScreens = (visibleScreens - 1).coerceAtLeast(0)
+    }
+
+    /** The cheap subset that on-device controls can change. */
+    private suspend fun refreshLive() {
+        val conn = connection?.takeIf { it.isConnected } ?: return
+        val mode = conn.currentModeIdx()
+        val settings = conn.audioSettings()
+        if (mode == _state.value.currentModeIdx && settings == _state.value.audioSettings) return
+        _state.value = _state.value.copy(
+            currentModeIdx = mode ?: _state.value.currentModeIdx,
+            audioSettings = settings ?: _state.value.audioSettings,
+        )
+        persistWidgetCache()
+    }
+
+    /** Full state refresh: one GetAll drain + battery + name (+ firmware once). */
+    suspend fun refresh() {
+        val conn = ensureConnected()
+        try {
+            val snapshot = conn.snapshot()
+            val battery = runCatching { conn.battery() }.getOrNull()
+            val touch = runCatching { conn.touchControls() }.getOrNull()
+            val name = runCatching { conn.productName() }.getOrNull()
+            val firmware = _state.value.firmware
+                ?: runCatching { conn.firmware() }.getOrNull()
+            _state.value = _state.value.copy(
+                connected = true,
+                deviceName = name ?: _state.value.deviceName,
+                firmware = firmware,
+                battery = battery ?: _state.value.battery,
+                modes = snapshot.modes,
+                currentModeIdx = snapshot.currentModeIdx,
+                favorites = snapshot.favorites,
+                audioSettings = snapshot.audioSettings,
+                touchControls = touch ?: _state.value.touchControls,
+                lastError = null,
+            )
+            // Non-fatal: the device list is a nice-to-have next to modes and
+            // battery, and it must not fail the whole refresh.
+            runCatching { loadDevices(conn) }
+                .onFailure { Log.d(TAG, "Device list refresh failed: ${it.message}") }
+        } catch (e: Exception) {
+            onIoFailure(e)
+            throw e
+        }
+        persistWidgetCache()
+    }
+
+    // ── Paired devices [4.4]/[4.5]/[5.1] ─────────────────────────────────────
+
+    /**
+     * Fold a fresh [4.4] list into state. Synchronous by design: this also runs
+     * from the unsolicited collector, which must never touch the transport (see
+     * [onUnsolicited]). Names for unseen MACs arrive later via [fillDeviceNames].
+     */
+    private fun mergeDeviceList(entries: List<Pair<String, Boolean>>) {
+        val merged = mergePairedDevices(_state.value.pairedDevices, entries)
+        // A pending action is finished the moment the device reports the state
+        // it was asked for — this frame is the acknowledgement.
+        val stillPending = _state.value.pendingDevices.filterNot { (mac, target) ->
+            merged.any { it.mac == mac && it.connected == target }
+        }
+        _state.value = _state.value.copy(pairedDevices = merged, pendingDevices = stillPending)
+    }
+
+    private fun markPending(mac: String, target: Boolean) {
+        _state.value = _state.value.copy(
+            pendingDevices = _state.value.pendingDevices + (mac to target)
+        )
+        // Backstop: a connect to a device that never answers would otherwise
+        // spin forever, since there is no failure frame to react to.
+        scope.launch {
+            delay(DEVICE_ACTION_TIMEOUT_MS)
+            clearPending(mac)
+        }
+    }
+
+    private fun clearPending(mac: String) {
+        if (mac !in _state.value.pendingDevices) return
+        _state.value = _state.value.copy(
+            pendingDevices = _state.value.pendingDevices - mac
+        )
+    }
+
+    /**
+     * Read [4.5] for devices we have no name for. Names don't change, so this
+     * costs one GET each on first sight and nothing thereafter — which is what
+     * keeps a refresh down to one [4.4] plus one [5.1].
+     */
+    private suspend fun fillDeviceNames(conn: BmapConnection) {
+        // Connected first: the transport serialises requests, so with six known
+        // devices the tail takes a couple of seconds. The Home section only
+        // shows connected ones, and until a name lands the row reads as a raw
+        // MAC — so resolve those two before the four nobody is looking at.
+        val missing = _state.value.pairedDevices
+            .filter { it.name.isEmpty() }
+            .sortedByDescending { it.connected }
+        // Applied one at a time rather than in a batch at the end, so the two
+        // rows on Home stop reading as raw MACs as soon as their own [4.5]
+        // lands instead of waiting for the whole list.
+        for (target in missing) {
+            val info = runCatching { conn.deviceInfo(target.mac) }.getOrNull() ?: continue
+            // Re-read state each pass: the list can change while we read.
+            _state.value = _state.value.copy(
+                pairedDevices = _state.value.pairedDevices.map { device ->
+                    if (device.mac != info.mac) device
+                    else device.copy(
+                        name = info.name, isLocalDevice = info.isLocalDevice,
+                        isBoseProduct = info.isBoseProduct,
+                    )
+                }
+            )
+        }
+    }
+
+    private suspend fun loadDevices(conn: BmapConnection) {
+        mergeDeviceList(conn.deviceList())
+        runCatching { conn.activeSource() }.getOrNull()?.let {
+            _state.value = _state.value.copy(activeSourceMac = it)
+        }
+        fillDeviceNames(conn)
+    }
+
+    /** Re-read the device list on demand (Connections screen pull/open). */
+    suspend fun refreshDevices() = action { loadDevices(it) }
+
+    suspend fun disconnectSource(mac: String) = action { conn ->
+        markPending(mac, target = false)
+        try {
+            conn.disconnectDevice(mac)
+        } catch (e: Exception) {
+            clearPending(mac)
+            throw e
+        }
+        loadDevices(conn)
+    }
+
+    /**
+     * [4.1] acks with PROCESSING and the link comes up a few seconds later, so
+     * there is nothing useful to read here — the [4.4] push reports the result.
+     */
+    suspend fun connectSource(mac: String) = action { conn ->
+        markPending(mac, target = true)
+        try {
+            conn.connectDevice(mac)
+        } catch (e: Exception) {
+            clearPending(mac)
+            throw e
+        }
+    }
+
+    suspend fun forgetSource(mac: String) = action { conn ->
+        conn.forgetDevice(mac)
+        loadDevices(conn)
+    }
+
+    /** Device-pushed STATUS frames (e.g. mode switched via earbud gestures). */
+    private suspend fun onUnsolicited(packet: eu.depau.bosectl.bmap.BmapPacket) {
+        Log.d(TAG, "PUSH $packet")
+        if (packet.op != Op.STATUS) return
+        val s = _state.value
+        when {
+            packet.matches(BmapConnection.Addr.CURRENT_MODE) && packet.payload.isNotEmpty() ->
+                _state.value = s.copy(currentModeIdx = packet.payload[0].toInt() and 0xFF)
+            packet.matches(BmapConnection.Addr.AUDIO_SETTINGS) ->
+                parseAudioSettings(packet.payload)?.let { _state.value = s.copy(audioSettings = it) }
+            packet.matches(BmapConnection.Addr.FAVORITES) ->
+                parseFavorites(packet.payload)?.let { _state.value = s.copy(favorites = it) }
+            packet.matches(BmapConnection.Addr.MODE_CONFIG) ->
+                parseModeConfig(packet.payload)?.let { cfg ->
+                    _state.value = s.copy(modes = s.modes.map { if (it.modeIdx == cfg.modeIdx) cfg else it })
+                }
+            packet.matches(BmapConnection.Addr.BATTERY) ->
+                _state.value = s.copy(battery = parseBattery(packet.payload))
+            // Pushed on every connect/disconnect once block 4 is subscribed —
+            // this is what makes the device list live. Merge synchronously and
+            // hand any name lookup to the repository scope: this collector runs
+            // while the transport's request mutex may be held, so calling the
+            // device from here can deadlock once the push buffer fills.
+            packet.matches(BmapConnection.Addr.DEV_LIST) -> {
+                mergeDeviceList(parseDeviceList(packet.payload))
+                if (_state.value.pairedDevices.any { it.name.isEmpty() }) {
+                    runAsync { connection?.let { fillDeviceNames(it) } }
+                }
+            }
+            packet.matches(BmapConnection.Addr.ACTIVE_SOURCE) ->
+                parseActiveSource(packet.payload)?.let {
+                    _state.value = s.copy(activeSourceMac = it)
+                }
+            else -> return
+        }
+        persistWidgetCache()
+    }
+
+    private fun onIoFailure(e: Exception) {
+        Log.w(TAG, "Device operation failed", e)
+        if (connection?.isConnected != true) {
+            disconnect()
+        }
+        _state.value = _state.value.copy(lastError = e.message)
+    }
+
+    // ── Actions (optimistic state update + widget refresh) ───────────────────
+
+    private suspend fun <T> action(block: suspend (BmapConnection) -> T): T {
+        val conn = ensureConnected()
+        return try {
+            block(conn)
+        } catch (e: Exception) {
+            onIoFailure(e)
+            throw e
+        } finally {
+            persistWidgetCache()
+        }
+    }
+
+    /** Run arbitrary typed calls against the connection (settings screen). */
+    suspend fun <T> withDevice(block: suspend (BmapConnection) -> T): T = action(block)
+
+    suspend fun setMode(idx: Int) = action { conn ->
+        conn.setMode(idx)
+        _state.value = _state.value.copy(currentModeIdx = idx)
+        // Switching modes also changes the live audio settings; re-read them.
+        runCatching { conn.audioSettings() }.getOrNull()?.let {
+            _state.value = _state.value.copy(audioSettings = it)
+        }
+    }
+
+    suspend fun setSpatial(spatial: Spatial) = updateAudioSettings { it.copy(spatial = spatial) }
+
+    suspend fun setCnc(level: Int) = updateAudioSettings { it.copy(cncLevel = level) }
+
+    suspend fun setAnc(enabled: Boolean) = updateAudioSettings { it.copy(ancToggle = enabled) }
+
+    /**
+     * Nudge the noise-cancelling level by [delta] steps on the *display* scale
+     * (positive = more cancelling). The wire scale is inverted.
+     */
+    suspend fun adjustCnc(delta: Int) = updateAudioSettings {
+        it.copy(cncLevel = (it.cncLevel - delta).coerceIn(0, 10))
+    }
+
+    // No setWind: [31.10] rejects wind-block writes with Runtime error 8 on the
+    // QC Ultra Earbuds; wind block is only configurable per-profile via [31.6].
+
+    private suspend fun updateAudioSettings(transform: (AudioSettings) -> AudioSettings) =
+        action { conn ->
+            val current = _state.value.audioSettings ?: conn.audioSettings()
+                ?: throw BmapException("Audio settings unavailable")
+            val updated = transform(current)
+            conn.setAudioSettings(updated)
+            _state.value = _state.value.copy(audioSettings = updated.copy(autoCnc = false))
+        }
+
+    suspend fun setTouchControls(enabled: Boolean) = action { conn ->
+        conn.setTouchControls(enabled)
+        _state.value = _state.value.copy(touchControls = enabled)
+    }
+
+    suspend fun toggleStar(modeIdx: Int) = action { conn ->
+        val favorites = _state.value.favorites ?: conn.favorites()
+            ?: throw BmapException("Favorites unavailable")
+        val starred = favorites.starred.toMutableSet()
+        if (!starred.remove(modeIdx)) starred.add(modeIdx)
+        val updated = favorites.copy(starred = starred)
+        conn.setFavorites(updated)
+        _state.value = _state.value.copy(favorites = updated)
+    }
+
+    suspend fun saveProfile(
+        slot: Int, name: String, promptId: Int, cncLevel: Int, spatial: Spatial,
+        favourite: Boolean = false,
+    ) = action { conn ->
+        conn.writeMode(slot, name, promptId, cncLevel, spatial)
+        if (favourite) {
+            val current = _state.value.favorites ?: conn.favorites()
+            current?.let { conn.setFavorites(it.copy(starred = it.starred + slot)) }
+        }
+        refresh()
+    }
+
+    suspend fun deleteProfile(slot: Int) = action { conn ->
+        conn.deleteMode(slot)
+        // Deleted slots shouldn't stay starred
+        _state.value.favorites?.let { fav ->
+            if (slot in fav.starred) conn.setFavorites(fav.copy(starred = fav.starred - slot))
+        }
+        refresh()
+    }
+
+    // ── Widget cache ─────────────────────────────────────────────────────────
+
+    private suspend fun persistWidgetCache() {
+        val s = _state.value
+        context.dataStore.edit { prefs ->
+            prefs[Prefs.CACHE_CONNECTED] = s.connected
+            prefs[Prefs.CACHE_PLAYING_HERE] = s.playingHere
+            s.link?.let { prefs[Prefs.CACHE_LINK] = it.id }
+            s.deviceName?.let { prefs[Prefs.CACHE_DEVICE_NAME] = it }
+            s.currentModeIdx?.let { prefs[Prefs.CACHE_CURRENT_MODE] = it }
+            s.audioSettings?.let {
+                prefs[Prefs.CACHE_SPATIAL] = it.spatial.value
+                prefs[Prefs.CACHE_ANC] = it.ancToggle
+                prefs[Prefs.CACHE_CNC] = it.cncLevel
+            }
+            s.touchControls?.let { prefs[Prefs.CACHE_TOUCH] = it }
+            s.battery?.let { b ->
+                // Stored per cell so the widget can pair each with its icon.
+                b.left?.let { prefs[Prefs.CACHE_BAT_LEFT] = it }
+                b.right?.let { prefs[Prefs.CACHE_BAT_RIGHT] = it }
+                b.case?.let { prefs[Prefs.CACHE_BAT_CASE] = it }
+                b.overall?.let { prefs[Prefs.CACHE_BAT_OVERALL] = it }
+            }
+            if (s.modes.isNotEmpty()) {
+                prefs[Prefs.CACHE_STARRED] = encodeCachedModes(
+                    s.starredModes.map { CachedMode(it.modeIdx, it.promptId, it.name) }
+                )
+            }
+        }
+        runCatching { BoseWidget().updateAll(context) }
+            .onFailure { Log.w(TAG, "Widget update failed", it) }
+    }
+}
