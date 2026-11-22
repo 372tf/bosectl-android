@@ -25,6 +25,22 @@ class AclReceiver : BroadcastReceiver() {
         }.getOrDefault(false)
 
     @SuppressLint("MissingPermission")
+    private fun isBoseDevice(device: BluetoothDevice): Boolean =
+        runCatching {
+            device.name?.contains("Bose", ignoreCase = true) == true
+        }.getOrDefault(false)
+
+    @SuppressLint("MissingPermission")
+    private fun isMacConnected(context: Context, mac: String): Boolean {
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+            ?: return false
+        return runCatching {
+            val device = adapter.getRemoteDevice(mac)
+            isDeviceConnected(device)
+        }.getOrDefault(false)
+    }
+
+    @SuppressLint("MissingPermission")
     private fun findOtherConnectedBoseDevice(
         context: Context,
         excludedMac: String,
@@ -35,7 +51,7 @@ class AclReceiver : BroadcastReceiver() {
             adapter.bondedDevices
                 ?.filter { candidate ->
                     !candidate.address.equals(excludedMac, ignoreCase = true) &&
-                        candidate.name?.contains("Bose", ignoreCase = true) == true &&
+                        isBoseDevice(candidate) &&
                         isDeviceConnected(candidate)
                 }
                 ?.sortedBy { it.address }
@@ -43,6 +59,7 @@ class AclReceiver : BroadcastReceiver() {
         }.getOrNull()
     }
 
+    @SuppressLint("MissingPermission")
     override fun onReceive(context: Context, intent: Intent) {
         val device = IntentCompat.getParcelableExtra(
             intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java
@@ -52,19 +69,38 @@ class AclReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val savedMac = DeviceRepository.savedDeviceMac() ?: return@launch
-                if (!savedMac.equals(device.address, ignoreCase = true)) return@launch
+                val isSavedDevice = savedMac.equals(device.address, ignoreCase = true)
 
                 when (intent.action) {
                     // Bluetooth broadcasts guarded by BLUETOOTH_CONNECT are exempt
                     // from the background foreground-service start restrictions.
-                    BluetoothDevice.ACTION_ACL_CONNECTED -> BoseConnectionService.start(context)
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                        if (isSavedDevice) {
+                            BoseConnectionService.start(context)
+                        } else if (
+                            isBoseDevice(device) &&
+                            !DeviceRepository.state.value.connected &&
+                            !isMacConnected(context, savedMac)
+                        ) {
+                            val name = runCatching { device.name }.getOrNull()
+                            Log.i(TAG, "Saved device offline; auto-switching to ${device.address}")
+                            DeviceRepository.setDevice(
+                                mac = device.address,
+                                displayName = name ?: "Switching...",
+                            )
+                            BoseConnectionService.start(context)
+                        }
+                    }
+
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                        if (!isSavedDevice) return@launch
                         val fallback = findOtherConnectedBoseDevice(context, device.address)
                         if (fallback != null) {
+                            val name = runCatching { fallback.name }.getOrNull()
                             Log.i(TAG, "Active device disconnected; falling back to ${fallback.address}")
                             DeviceRepository.setDevice(
                                 mac = fallback.address,
-                                displayName = fallback.name ?: "Switching...",
+                                displayName = name ?: "Switching...",
                             )
                             runCatching { DeviceRepository.refresh() }
                                 .onFailure { Log.w(TAG, "Fallback refresh failed", it) }
