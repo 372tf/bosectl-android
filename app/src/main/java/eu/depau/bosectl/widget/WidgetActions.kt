@@ -1,6 +1,7 @@
 package eu.depau.bosectl.widget
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.util.Log
@@ -73,28 +74,48 @@ class AdjustCncAction : ActionCallback {
     }
 }
 
-/** ペアリング済みの別Boseデバイスへ即座にトグル切り替えするアクション */
+/** 接続中のBoseデバイスへ即座に切り替えるアクション */
 class SwitchDeviceAction : ActionCallback {
+    private fun isDeviceConnected(device: BluetoothDevice): Boolean =
+        runCatching {
+            device.javaClass.getMethod("isConnected").invoke(device) as Boolean
+        }.getOrDefault(false)
+
     @SuppressLint("MissingPermission")
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         run(context, "switchDevice") {
             val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
                 ?: return@run
             val currentMac = DeviceRepository.savedDeviceMac()
-            val boseDevices = adapter.bondedDevices
-                ?.filter { it.name?.contains("Bose", ignoreCase = true) == true }
+            val connectedBoseDevices = adapter.bondedDevices
+                ?.filter { device ->
+                    device.name?.contains("Bose", ignoreCase = true) == true &&
+                        isDeviceConnected(device)
+                }
                 ?.sortedBy { it.address }
                 .orEmpty()
 
-            if (boseDevices.size < 2) {
-                Log.w(TAG, "No other bonded Bose device found (count=${boseDevices.size})")
+            if (connectedBoseDevices.isEmpty()) {
+                Log.w(TAG, "No connected Bose device found")
                 return@run
             }
 
-            val currentIdx = boseDevices.indexOfFirst {
+            val currentIdx = connectedBoseDevices.indexOfFirst {
                 it.address.equals(currentMac, ignoreCase = true)
             }
-            val nextDevice = boseDevices[(currentIdx + 1) % boseDevices.size]
+
+            // すでに選択中の1台だけが接続中なら、切り替えずに状態だけ最新化
+            if (currentIdx != -1 && connectedBoseDevices.size == 1) {
+                DeviceRepository.refresh()
+                return@run
+            }
+
+            // 今の機器が未接続なら接続中の1台目へ、2台以上接続中なら次の機器へ切り替え
+            val nextDevice = if (currentIdx == -1) {
+                connectedBoseDevices.first()
+            } else {
+                connectedBoseDevices[(currentIdx + 1) % connectedBoseDevices.size]
+            }
 
             // 設定を残したままキャッシュをクリアし、切り替え先をセットしてウィジェット更新
             DeviceRepository.setDevice(
