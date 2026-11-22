@@ -162,7 +162,15 @@ object DeviceRepository {
         context.dataStore.data.first()[Prefs.DEVICE_MAC]
 
     suspend fun setDevice(mac: String) {
-        context.dataStore.edit { it[Prefs.DEVICE_MAC] = mac }
+        context.dataStore.edit {
+            it[Prefs.DEVICE_MAC] = mac
+            it.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
+            it.remove(Prefs.CACHE_BAT_LEFT)
+            it.remove(Prefs.CACHE_BAT_RIGHT)
+            it.remove(Prefs.CACHE_BAT_CASE)
+            it.remove(Prefs.CACHE_BAT_OVERALL)
+        }
+        _state.value = BoseState()
         disconnect()
     }
 
@@ -848,10 +856,10 @@ object DeviceRepository {
             s.touchControls?.let { prefs[Prefs.CACHE_TOUCH] = it }
             s.battery?.let { b ->
                 // Stored per cell so the widget can pair each with its icon.
-                b.left?.let { prefs[Prefs.CACHE_BAT_LEFT] = it }
-                b.right?.let { prefs[Prefs.CACHE_BAT_RIGHT] = it }
-                b.case?.let { prefs[Prefs.CACHE_BAT_CASE] = it }
-                b.overall?.let { prefs[Prefs.CACHE_BAT_OVERALL] = it }
+                if (b.left != null) prefs[Prefs.CACHE_BAT_LEFT] = b.left else prefs.remove(Prefs.CACHE_BAT_LEFT)
+                if (b.right != null) prefs[Prefs.CACHE_BAT_RIGHT] = b.right else prefs.remove(Prefs.CACHE_BAT_RIGHT)
+                if (b.case != null) prefs[Prefs.CACHE_BAT_CASE] = b.case else prefs.remove(Prefs.CACHE_BAT_CASE)
+                if (b.overall != null) prefs[Prefs.CACHE_BAT_OVERALL] = b.overall else prefs.remove(Prefs.CACHE_BAT_OVERALL)
             }
             if (s.modes.isNotEmpty()) {
                 prefs[Prefs.CACHE_STARRED] = encodeCachedModes(
