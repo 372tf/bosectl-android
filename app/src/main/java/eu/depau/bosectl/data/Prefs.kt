@@ -33,6 +33,9 @@ object Prefs {
     /** Whether the user enabled nearby detection (needs BLUETOOTH_SCAN). */
     val PRESENCE_ENABLED = booleanPreferencesKey("presence_enabled")
 
+    /** 機器MACごとのウィジェット表示モード設定 (JSON: {"MAC": [0, 1, 3, 4]}) */
+    val WIDGET_MODES_MAP = stringPreferencesKey("widget_modes_map")
+
     // Widget cache: last known state so the widget renders instantly/offline.
     val CACHE_DEVICE_NAME = stringPreferencesKey("cache_device_name")
     val CACHE_CONNECTED = booleanPreferencesKey("cache_connected")
@@ -70,3 +73,22 @@ fun decodeCachedModes(json: String?): List<CachedMode> = runCatching {
         CachedMode(o.getInt("i"), o.getInt("p"), o.getString("n"))
     }
 }.getOrDefault(emptyList())
+
+fun encodeWidgetModesMap(map: Map<String, Set<Int>>): String = JSONObject().apply {
+    map.forEach { (mac, ids) ->
+        put(mac.uppercase(), JSONArray().apply { ids.sorted().forEach { put(it) } })
+    }
+}.toString()
+
+fun decodeWidgetModesMap(json: String?): Map<String, Set<Int>> = runCatching {
+    val obj = JSONObject(json ?: return emptyMap())
+    buildMap {
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val mac = keys.next()
+            val arr = obj.getJSONArray(mac)
+            val ids = (0 until arr.length()).map { arr.getInt(it) }.toSet()
+            if (ids.isNotEmpty()) put(mac.uppercase(), ids)
+        }
+    }
+}.getOrDefault(emptyMap())
