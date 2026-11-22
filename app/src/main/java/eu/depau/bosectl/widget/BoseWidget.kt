@@ -35,6 +35,7 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
@@ -101,13 +102,15 @@ suspend fun publishWidgetPreview(context: Context) {
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
-// フォルダ風カラー設定（ARGBの16進数: 先頭2桁が透明度 00=透明 〜 FF=不透明）
-private val WIDGET_BG_COLOR = ColorProvider(Color(0x999DA4AF))       // フォルダ風の半透明グレー
-private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF))   // 選択中ボタン: 白
+// フォルダ風カラー＆枠線設定
+private val WIDGET_BORDER_COLOR = ColorProvider(Color(0x4DFFFFFF)) // 外周の枠線色（半透明の白）
+private val BORDER_WIDTH = 1.dp                                    // 外周の枠線の太さ
+private val WIDGET_BG_COLOR = ColorProvider(Color(0x559DA4AF))     // フォルダ風の半透明グレー
+private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF)) // 選択中ボタン: 白
 private val UNSELECTED_CHIP_COLOR = ColorProvider(Color(0x3DFFFFFF)) // 未選択ボタン: 半透明白グレー
-private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))    // 通常文字・アイコン: 白
-private val TEXT_SUB_COLOR = ColorProvider(Color(0xE6F1F5F9))        // バッテリー等の補助文字: 明るい白
-private val TEXT_SELECTED_COLOR = ColorProvider(Color(0xFF1F242D))   // 選択中ボタン内の文字・アイコン: 濃グレー
+private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))  // 通常文字・アイコン: 白
+private val TEXT_SUB_COLOR = ColorProvider(Color(0xE6F1F5F9))      // バッテリー等の補助文字: 明るい白
+private val TEXT_SELECTED_COLOR = ColorProvider(Color(0xFF1F242D)) // 選択中ボタン内の文字・アイコン: 濃グレー
 
 private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
@@ -186,91 +189,100 @@ class BoseWidget : GlanceAppWidget() {
         val touch = prefs?.get(Prefs.CACHE_TOUCH) ?: true
         val starred = decodeCachedModes(prefs?.get(Prefs.CACHE_STARRED))
 
-        Column(
+        // 外側のBoxで外周の枠線（フチ取り）を描画
+        Box(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(WIDGET_BG_COLOR)
+                .background(WIDGET_BORDER_COLOR)
                 .cornerRadius(22.dp)
-                .padding(horizontal = HORIZONTAL_PADDING, vertical = VERTICAL_PADDING),
+                .padding(BORDER_WIDTH),
         ) {
-            Header(deviceName, battery, connected, link, playingHere)
+            Column(
+                modifier = GlanceModifier
+                    .fillMaxSize()
+                    .background(WIDGET_BG_COLOR)
+                    .cornerRadius(21.dp)
+                    .padding(horizontal = HORIZONTAL_PADDING, vertical = VERTICAL_PADDING),
+            ) {
+                Header(deviceName, battery, connected, link, playingHere)
 
-            if (starred.isEmpty()) {
-                Text(
-                    "Open the app to load your modes",
-                    style = TextStyle(
-                        color = TEXT_SUB_COLOR, fontSize = 12.sp
-                    ),
-                )
-                return@Column
-            }
-
-            // 2x2専用レイアウト
-            if (is2x2) {
-                val modes4 = starred.take(4)
-                val row1 = modes4.take(2)
-                val row2 = modes4.drop(2).take(2)
-
-                Spacer(GlanceModifier.defaultWeight())
-                ModeGridRow(row1, currentMode, connected, GlanceModifier.height(29.dp))
-                if (row2.isNotEmpty()) {
-                    Spacer(GlanceModifier.height(5.dp))
-                    ModeGridRow(row2, currentMode, connected, GlanceModifier.height(29.dp))
+                if (starred.isEmpty()) {
+                    Text(
+                        "Open the app to load your modes",
+                        style = TextStyle(
+                            color = TEXT_SUB_COLOR, fontSize = 12.sp
+                        ),
+                    )
+                    return@Column
                 }
-                Spacer(GlanceModifier.height(6.dp))
-                CompactSpatialRow(spatial, connected, GlanceModifier.height(29.dp))
-                Spacer(GlanceModifier.height(2.dp))
-                return@Column
-            }
 
-            if (compact) {
+                // 2x2専用レイアウト
+                if (is2x2) {
+                    val modes4 = starred.take(4)
+                    val row1 = modes4.take(2)
+                    val row2 = modes4.drop(2).take(2)
+
+                    Spacer(GlanceModifier.defaultWeight())
+                    ModeGridRow(row1, currentMode, connected, GlanceModifier.height(29.dp))
+                    if (row2.isNotEmpty()) {
+                        Spacer(GlanceModifier.height(5.dp))
+                        ModeGridRow(row2, currentMode, connected, GlanceModifier.height(29.dp))
+                    }
+                    Spacer(GlanceModifier.height(6.dp))
+                    CompactSpatialRow(spatial, connected, GlanceModifier.height(29.dp))
+                    Spacer(GlanceModifier.height(2.dp))
+                    return@Column
+                }
+
+                if (compact) {
+                    Spacer(GlanceModifier.defaultWeight())
+                    ModeChipRow(
+                        starred, currentMode, connected,
+                        cols = modeSlots(size.width, MODE_CHIP_MIN_WIDTH),
+                        showIcon = wideChips,
+                        modifier = GlanceModifier.height(CHIP_HEIGHT),
+                    )
+                    return@Column
+                }
+
+                // 4x2 / 3x2 / 4x3 レイアウト
                 Spacer(GlanceModifier.defaultWeight())
-                ModeChipRow(
+                ModeButtonRow(
                     starred, currentMode, connected,
-                    cols = modeSlots(size.width, MODE_CHIP_MIN_WIDTH),
-                    showIcon = wideChips,
-                    modifier = GlanceModifier.height(CHIP_HEIGHT),
+                    cols = modeSlots(size.width, MODE_BUTTON_MIN_WIDTH).let {
+                        if (size.width >= WIDE_MIN_WIDTH) it else minOf(it, NARROW_MAX_MODES)
+                    },
+                    modifier = GlanceModifier.height(MODE_BUTTON_HEIGHT),
                 )
-                return@Column
-            }
+                Spacer(GlanceModifier.height(if (is4x2) 9.dp else GAP))
+                SpatialRow(
+                    spatial, connected,
+                    modifier = GlanceModifier.height(SPATIAL_HEIGHT),
+                )
 
-            // 4x2 / 3x2 / 4x3 レイアウト
-            Spacer(GlanceModifier.defaultWeight())
-            ModeButtonRow(
-                starred, currentMode, connected,
-                cols = modeSlots(size.width, MODE_BUTTON_MIN_WIDTH).let {
-                    if (size.width >= WIDE_MIN_WIDTH) it else minOf(it, NARROW_MAX_MODES)
-                },
-                modifier = GlanceModifier.height(MODE_BUTTON_HEIGHT),
-            )
-            Spacer(GlanceModifier.height(if (is4x2) 9.dp else GAP))
-            SpatialRow(
-                spatial, connected,
-                modifier = GlanceModifier.height(SPATIAL_HEIGHT),
-            )
-
-            if (!showControls) {
-                Spacer(GlanceModifier.height(2.dp))
-            }
-
-            if (showControls) {
-                Spacer(GlanceModifier.defaultWeight())
-                Row(modifier = GlanceModifier.fillMaxWidth().height(TOGGLE_HEIGHT)) {
-                    ToggleChip(
-                        checked = anc, label = "ANC", showIcon = wideChips,
-                        icon = if (anc) R.drawable.ic_noise_control_on
-                        else R.drawable.ic_noise_control_off,
-                        action = actionRunCallback<ToggleAncAction>(),
-                    )
-                    Spacer(GlanceModifier.width(8.dp))
-                    ToggleChip(
-                        checked = touch, label = "Touch", showIcon = wideChips,
-                        icon = R.drawable.ic_touch_app,
-                        action = actionRunCallback<ToggleTouchControlsAction>(),
-                    )
+                if (!showControls) {
+                    Spacer(GlanceModifier.height(2.dp))
                 }
-                Spacer(GlanceModifier.height(GAP))
-                CncRow(cnc, enabled = anc && connected)
+
+                if (showControls) {
+                    Spacer(GlanceModifier.defaultWeight())
+                    Row(modifier = GlanceModifier.fillMaxWidth().height(TOGGLE_HEIGHT)) {
+                        ToggleChip(
+                            checked = anc, label = "ANC", showIcon = wideChips,
+                            icon = if (anc) R.drawable.ic_noise_control_on
+                            else R.drawable.ic_noise_control_off,
+                            action = actionRunCallback<ToggleAncAction>(),
+                        )
+                        Spacer(GlanceModifier.width(8.dp))
+                        ToggleChip(
+                            checked = touch, label = "Touch", showIcon = wideChips,
+                            icon = R.drawable.ic_touch_app,
+                            action = actionRunCallback<ToggleTouchControlsAction>(),
+                        )
+                    }
+                    Spacer(GlanceModifier.height(GAP))
+                    CncRow(cnc, enabled = anc && connected)
+                }
             }
         }
     }
