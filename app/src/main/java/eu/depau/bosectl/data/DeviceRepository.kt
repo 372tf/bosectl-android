@@ -78,6 +78,8 @@ data class BoseState(
     val modes: List<ModeConfig> = emptyList(),
     val currentModeIdx: Int? = null,
     val favorites: Favorites? = null,
+    /** アプリ側で選んだウィジェット表示用のモードID（空なら★を使用） */
+    val widgetModeIds: Set<Int> = emptySet(),
     val audioSettings: AudioSettings? = null,
     val touchControls: Boolean? = null,
     /** Devices the earbuds know about, in the order [4.4] last reported them. */
@@ -100,6 +102,18 @@ data class BoseState(
 ) {
     val starredModes: List<ModeConfig>
         get() = modes.filter { favorites?.starred?.contains(it.modeIdx) == true && !it.isFreeSlot }
+
+    /** ウィジェットに表示するモード一覧（個別設定があればそちらを優先） */
+    val widgetModes: List<ModeConfig>
+        get() {
+            val available = modes.filter { !it.isFreeSlot }
+            if (widgetModeIds.isNotEmpty()) {
+                val selected = available.filter { it.modeIdx in widgetModeIds }
+                if (selected.isNotEmpty()) return selected
+            }
+            return starredModes.ifEmpty { available }
+        }
+
     val currentMode: ModeConfig?
         get() = modes.firstOrNull { it.modeIdx == currentModeIdx }
     /**
@@ -163,20 +177,27 @@ object DeviceRepository {
 
     suspend fun setDevice(mac: String, displayName: String? = null) {
         disconnect(updateCache = false)
-        _state.value = BoseState(deviceName = displayName)
+        var savedWidgetIds: Set<Int> = emptySet()
         context.dataStore.edit { prefs ->
-            // アプリの設定だけは消えないように退避しておく
+            // アプリの設定と機器ごとのウィジェット表示設定は消えないように退避しておく
             val linkLayer = prefs[Prefs.LINK_LAYER]
             val presenceEnabled = prefs[Prefs.PRESENCE_ENABLED]
+            val widgetModesMap = prefs[Prefs.WIDGET_MODES_MAP]
+            savedWidgetIds = decodeWidgetModesMap(widgetModesMap)[mac.uppercase()].orEmpty()
 
             prefs.clear()
 
             linkLayer?.let { prefs[Prefs.LINK_LAYER] = it }
             presenceEnabled?.let { prefs[Prefs.PRESENCE_ENABLED] = it }
+            widgetModesMap?.let { prefs[Prefs.WIDGET_MODES_MAP] = it }
             prefs[Prefs.DEVICE_MAC] = mac
             displayName?.let { prefs[Prefs.CACHE_DEVICE_NAME] = it }
             prefs[Prefs.CACHE_CONNECTED] = false
         }
+        _state.value = BoseState(
+            deviceName = displayName,
+            widgetModeIds = savedWidgetIds,
+        )
         runCatching { BoseWidget().updateAll(context) }
             .onFailure { Log.w(TAG, "Widget update failed", it) }
     }
@@ -210,10 +231,10 @@ object DeviceRepository {
         for (link in order) {
             try {
                 val transport = openTransport(link, context, device)
-                Log.i(TAG, "Connected to ${device.address} over$link")
+                Log.i(TAG, "Connected to ${device.address} over $link")
                 return transport to link
             } catch (e: Exception) {
-                Log.w(TAG, "$link transport failed:${e.message}")
+                Log.w(TAG, "$link transport failed: ${e.message}")
                 lastError = e
             }
         }
@@ -482,9 +503,12 @@ object DeviceRepository {
     /** Load the persisted sighting so a freshly started UI isn't blank. */
     fun restorePresence() = runAsync {
         val prefs = context.dataStore.data.first()
+        val mac = prefs[Prefs.DEVICE_MAC]?.uppercase()
+        val widgetIds = mac?.let { decodeWidgetModesMap(prefs[Prefs.WIDGET_MODES_MAP])[it] }.orEmpty()
         _state.value = _state.value.copy(
             lastSeenAt = prefs[Prefs.LAST_SEEN_AT],
             lastSeenAvailable = prefs[Prefs.LAST_SEEN_AVAILABLE] ?: false,
+            widgetModeIds = widgetIds,
         )
     }
 
@@ -576,6 +600,9 @@ object DeviceRepository {
     suspend fun refresh() {
         val conn = ensureConnected()
         try {
+            val prefs = context.dataStore.data.first()
+            val mac = prefs[Prefs.DEVICE_MAC]?.uppercase()
+            val widgetIds = mac?.let { decodeWidgetModesMap(prefs[Prefs.WIDGET_MODES_MAP])[it] }.orEmpty()
             val snapshot = conn.snapshot()
             val battery = runCatching { conn.battery() }.getOrNull()
             val touch = runCatching { conn.touchControls() }.getOrNull()
@@ -590,6 +617,7 @@ object DeviceRepository {
                 modes = snapshot.modes,
                 currentModeIdx = snapshot.currentModeIdx,
                 favorites = snapshot.favorites,
+                widgetModeIds = widgetIds,
                 audioSettings = snapshot.audioSettings,
                 touchControls = touch ?: _state.value.touchControls,
                 lastError = null,
@@ -826,6 +854,22 @@ object DeviceRepository {
         _state.value = _state.value.copy(favorites = updated)
     }
 
+    /** ウィジェットに表示するモードのON/OFF（スマホ内保存のみ・本体ショートカットには影響しない） */
+    suspend fun toggleWidgetMode(modeIdx: Int) {
+        val mac = savedDeviceMac()?.uppercase() ?: return
+        var updatedIds: Set<Int> = emptySet()
+        context.dataStore.edit { prefs ->
+            val map = decodeWidgetModesMap(prefs[Prefs.WIDGET_MODES_MAP]).toMutableMap()
+            val current = map[mac]?.toMutableSet() ?: mutableSetOf()
+            if (!current.remove(modeIdx)) current.add(modeIdx)
+            if (current.isEmpty()) map.remove(mac) else map[mac] = current
+            updatedIds = current
+            prefs[Prefs.WIDGET_MODES_MAP] = encodeWidgetModesMap(map)
+        }
+        _state.value = _state.value.copy(widgetModeIds = updatedIds)
+        persistWidgetCache()
+    }
+
     suspend fun saveProfile(
         slot: Int, name: String, promptId: Int, cncLevel: Int, spatial: Spatial,
         favourite: Boolean = false,
@@ -843,6 +887,9 @@ object DeviceRepository {
         // Deleted slots shouldn't stay starred
         _state.value.favorites?.let { fav ->
             if (slot in fav.starred) conn.setFavorites(fav.copy(starred = fav.starred - slot))
+        }
+        if (slot in _state.value.widgetModeIds) {
+            toggleWidgetMode(slot)
         }
         refresh()
     }
@@ -872,7 +919,7 @@ object DeviceRepository {
             }
             if (s.modes.isNotEmpty()) {
                 prefs[Prefs.CACHE_STARRED] = encodeCachedModes(
-                    s.starredModes.map { CachedMode(it.modeIdx, it.promptId, it.name) }
+                    s.widgetModes.map { CachedMode(it.modeIdx, it.promptId, it.name) }
                 )
             }
         }
