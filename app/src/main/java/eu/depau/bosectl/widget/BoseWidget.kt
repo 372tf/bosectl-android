@@ -102,10 +102,10 @@ suspend fun publishWidgetPreview(context: Context) {
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
-// フォルダ風カラー設定（現在の 0x559DA4AF を維持＋外周の枠線を追加）
-private val WIDGET_BORDER_COLOR = ColorProvider(Color(0x4DFFFFFF))   // 外周の枠線色（半透明の白）
+// 後ろの枠線（白）と重なったときに1枚目の色味(0x559DA4AF)と同じになるよう補正
+private val WIDGET_BORDER_COLOR = ColorProvider(Color(0x55FFFFFF))   // 外周の枠線色（半透明の白）
 private val BORDER_WIDTH = 1.dp                                      // 外周の枠線の太さ
-private val WIDGET_BG_COLOR = ColorProvider(Color(0x559DA4AF))       // フォルダ風の半透明グレー（変更なし）
+private val WIDGET_BG_COLOR = ColorProvider(Color(0x454B5563))       // 合成後に1枚目と同じ濃さになる背景色
 private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF))   // 選択中ボタン: 白
 private val UNSELECTED_CHIP_COLOR = ColorProvider(Color(0x3DFFFFFF)) // 未選択ボタン: 半透明白グレー
 private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))    // 通常文字・アイコン: 白
