@@ -161,13 +161,24 @@ object DeviceRepository {
     suspend fun savedDeviceMac(): String? =
         context.dataStore.data.first()[Prefs.DEVICE_MAC]
 
-    suspend fun setDevice(mac: String) {
-        _state.value = BoseState()
-        context.dataStore.edit {
-            it.clear()
-            it[Prefs.DEVICE_MAC] = mac
+    suspend fun setDevice(mac: String, displayName: String? = null) {
+        disconnect(updateCache = false)
+        _state.value = BoseState(deviceName = displayName)
+        context.dataStore.edit { prefs ->
+            // アプリの設定だけは消えないように退避しておく
+            val linkLayer = prefs[Prefs.LINK_LAYER]
+            val presenceEnabled = prefs[Prefs.PRESENCE_ENABLED]
+
+            prefs.clear()
+
+            linkLayer?.let { prefs[Prefs.LINK_LAYER] = it }
+            presenceEnabled?.let { prefs[Prefs.PRESENCE_ENABLED] = it }
+            prefs[Prefs.DEVICE_MAC] = mac
+            displayName?.let { prefs[Prefs.CACHE_DEVICE_NAME] = it }
+            prefs[Prefs.CACHE_CONNECTED] = false
         }
-        disconnect()
+        runCatching { BoseWidget().updateAll(context) }
+            .onFailure { Log.w(TAG, "Widget update failed", it) }
     }
 
     suspend fun clearDevice() {
@@ -199,10 +210,10 @@ object DeviceRepository {
         for (link in order) {
             try {
                 val transport = openTransport(link, context, device)
-                Log.i(TAG, "Connected to ${device.address} over $link")
+                Log.i(TAG, "Connected to ${device.address} over$link")
                 return transport to link
             } catch (e: Exception) {
-                Log.w(TAG, "$link transport failed: ${e.message}")
+                Log.w(TAG, "$link transport failed:${e.message}")
                 lastError = e
             }
         }
@@ -270,7 +281,7 @@ object DeviceRepository {
             }
         }
 
-    fun disconnect() {
+    fun disconnect(updateCache: Boolean = true) {
         stopPolling()
         stopLinkWatchdog()
         stopKeepalive()
@@ -279,7 +290,9 @@ object DeviceRepository {
         connection?.close()
         connection = null
         _state.value = _state.value.copy(connected = false, busy = false, link = null)
-        scope.launch { persistWidgetCache() }
+        if (updateCache) {
+            scope.launch { persistWidgetCache() }
+        }
     }
 
     /**
