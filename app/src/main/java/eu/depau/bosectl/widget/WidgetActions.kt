@@ -4,17 +4,13 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.util.Log
-import androidx.datastore.preferences.core.edit
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.ToggleableStateKey
-import androidx.glance.appwidget.updateAll
 import eu.depau.bosectl.bmap.Spatial
 import eu.depau.bosectl.data.DeviceRepository
-import eu.depau.bosectl.data.Prefs
-import eu.depau.bosectl.data.dataStore
 
 private const val TAG = "WidgetActions"
 
@@ -100,14 +96,11 @@ class SwitchDeviceAction : ActionCallback {
             }
             val nextDevice = boseDevices[(currentIdx + 1) % boseDevices.size]
 
-            // 古いデバイスの状態とキャッシュをクリアしてから切り替え先をセット
-            DeviceRepository.setDevice(nextDevice.address)
-
-            context.dataStore.edit { prefs ->
-                prefs[Prefs.CACHE_DEVICE_NAME] = nextDevice.name ?: "Switching..."
-                prefs[Prefs.CACHE_CONNECTED] = false
-            }
-            BoseWidget().updateAll(context)
+            // 設定を残したままキャッシュをクリアし、切り替え先をセットしてウィジェット更新
+            DeviceRepository.setDevice(
+                mac = nextDevice.address,
+                displayName = nextDevice.name ?: "Switching...",
+            )
 
             DeviceRepository.refresh()
         }
