@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.TextUnit
@@ -49,6 +50,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
+import androidx.glance.unit.ColorProvider
 import eu.depau.bosectl.R
 import eu.depau.bosectl.bmap.Prompt
 import eu.depau.bosectl.data.CachedMode
@@ -98,6 +100,14 @@ suspend fun publishWidgetPreview(context: Context) {
     val result = GlanceAppWidgetManager(context).setWidgetPreviews(BoseWidgetReceiver::class)
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
+
+// フォルダ風カラー設定（ARGBの16進数: 先頭2桁が透明度 00=透明 〜 FF=不透明）
+private val WIDGET_BG_COLOR = ColorProvider(Color(0x999DA4AF))       // フォルダ風の半透明グレー
+private val SELECTED_CHIP_COLOR = ColorProvider(Color(0xE6FFFFFF))   // 選択中ボタン: 白
+private val UNSELECTED_CHIP_COLOR = ColorProvider(Color(0x3DFFFFFF)) // 未選択ボタン: 半透明白グレー
+private val TEXT_PRIMARY_COLOR = ColorProvider(Color(0xFFFFFFFF))    // 通常文字・アイコン: 白
+private val TEXT_SUB_COLOR = ColorProvider(Color(0xE6F1F5F9))        // バッテリー等の補助文字: 明るい白
+private val TEXT_SELECTED_COLOR = ColorProvider(Color(0xFF1F242D))   // 選択中ボタン内の文字・アイコン: 濃グレー
 
 private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
@@ -179,8 +189,8 @@ class BoseWidget : GlanceAppWidget() {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(GlanceTheme.colors.widgetBackground)
-                .cornerRadius(20.dp)
+                .background(WIDGET_BG_COLOR)
+                .cornerRadius(22.dp)
                 .padding(horizontal = HORIZONTAL_PADDING, vertical = VERTICAL_PADDING),
         ) {
             Header(deviceName, battery, connected, link, playingHere)
@@ -189,7 +199,7 @@ class BoseWidget : GlanceAppWidget() {
                 Text(
                     "Open the app to load your modes",
                     style = TextStyle(
-                        color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp
+                        color = TEXT_SUB_COLOR, fontSize = 12.sp
                     ),
                 )
                 return@Column
@@ -348,7 +358,7 @@ class BoseWidget : GlanceAppWidget() {
             modifier = GlanceModifier
                 .defaultWeight()
                 .fillMaxHeight()
-                .background(GlanceTheme.colors.secondaryContainer)
+                .background(UNSELECTED_CHIP_COLOR)
                 .cornerRadius(14.dp)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -357,7 +367,7 @@ class BoseWidget : GlanceAppWidget() {
                 Image(
                     provider = ImageProvider(icon),
                     contentDescription = null,
-                    colorFilter = ColorFilter.tint(GlanceTheme.colors.onSecondaryContainer),
+                    colorFilter = ColorFilter.tint(TEXT_PRIMARY_COLOR),
                     modifier = GlanceModifier.size(18.dp),
                 )
                 Spacer(GlanceModifier.width(6.dp))
@@ -384,8 +394,7 @@ class BoseWidget : GlanceAppWidget() {
             provider = ImageProvider(icon),
             contentDescription = description,
             colorFilter = ColorFilter.tint(
-                if (connected) GlanceTheme.colors.primary
-                else GlanceTheme.colors.onSurfaceVariant
+                if (connected) TEXT_PRIMARY_COLOR else TEXT_SUB_COLOR
             ),
             modifier = GlanceModifier.size(15.dp),
         )
@@ -417,7 +426,7 @@ class BoseWidget : GlanceAppWidget() {
             Text(
                 name,
                 style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
+                    color = TEXT_PRIMARY_COLOR,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
                 ),
@@ -446,13 +455,13 @@ class BoseWidget : GlanceAppWidget() {
             Image(
                 provider = ImageProvider(icon),
                 contentDescription = null,
-                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+                colorFilter = ColorFilter.tint(TEXT_SUB_COLOR),
                 modifier = GlanceModifier.size(13.dp),
             )
             Text(
                 "$percent%",
                 style = TextStyle(
-                    color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp
+                    color = TEXT_SUB_COLOR, fontSize = 11.sp
                 ),
                 maxLines = 1,
             )
@@ -580,8 +589,7 @@ class BoseWidget : GlanceAppWidget() {
             Text(
                 "Noise cancelling $display/10",
                 style = TextStyle(
-                    color = if (enabled) GlanceTheme.colors.onSurface
-                    else GlanceTheme.colors.onSurfaceVariant,
+                    color = if (enabled) TEXT_PRIMARY_COLOR else TEXT_SUB_COLOR,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                 ),
@@ -598,15 +606,14 @@ class BoseWidget : GlanceAppWidget() {
         Text(
             label,
             style = TextStyle(
-                color = if (enabled) GlanceTheme.colors.onSecondaryContainer
-                else GlanceTheme.colors.onSurfaceVariant,
+                color = if (enabled) TEXT_PRIMARY_COLOR else TEXT_SUB_COLOR,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             ),
             modifier = GlanceModifier
                 .width(40.dp)
-                .background(GlanceTheme.colors.secondaryContainer)
+                .background(UNSELECTED_CHIP_COLOR)
                 .cornerRadius(12.dp)
                 .clickable(actionRunCallback<AdjustCncAction>(params))
                 .padding(vertical = 4.dp),
@@ -621,7 +628,7 @@ class BoseWidget : GlanceAppWidget() {
         Text(
             "+$hidden",
             style = TextStyle(
-                color = GlanceTheme.colors.onSurfaceVariant,
+                color = TEXT_SUB_COLOR,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center,
             ),
@@ -639,7 +646,7 @@ class BoseWidget : GlanceAppWidget() {
             provider = ImageProvider(resId),
             contentDescription = null,
             colorFilter = ColorFilter.tint(
-                if (selected) GlanceTheme.colors.onPrimary else GlanceTheme.colors.onSurface
+                if (selected) TEXT_SELECTED_COLOR else TEXT_PRIMARY_COLOR
             ),
             modifier = GlanceModifier.size(iconSize),
         )
@@ -647,12 +654,11 @@ class BoseWidget : GlanceAppWidget() {
 
     @Composable
     private fun chipColor(selected: Boolean) =
-        if (selected) GlanceTheme.colors.primary else GlanceTheme.colors.secondaryContainer
+        if (selected) SELECTED_CHIP_COLOR else UNSELECTED_CHIP_COLOR
 
     @Composable
     private fun chipText(selected: Boolean, fontSize: TextUnit = 11.sp) = TextStyle(
-        color = if (selected) GlanceTheme.colors.onPrimary
-        else GlanceTheme.colors.onSecondaryContainer,
+        color = if (selected) TEXT_SELECTED_COLOR else TEXT_PRIMARY_COLOR,
         fontSize = fontSize,
         fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
         textAlign = TextAlign.Center,
