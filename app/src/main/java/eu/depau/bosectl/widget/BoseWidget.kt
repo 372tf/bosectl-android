@@ -197,7 +197,7 @@ class BoseWidget : GlanceAppWidget() {
 
             if (starred.isEmpty()) {
                 Text(
-                    "Searching for devices...",
+                    " ",
                     style = TextStyle(
                         color = TEXT_SUB_COLOR, fontSize = 12.sp
                     ),
