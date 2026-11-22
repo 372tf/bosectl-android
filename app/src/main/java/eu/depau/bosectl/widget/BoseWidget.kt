@@ -172,7 +172,7 @@ class BoseWidget : GlanceAppWidget() {
         val connected = prefs?.get(Prefs.CACHE_CONNECTED) ?: false
         val link = prefs?.get(Prefs.CACHE_LINK)
         val playingHere = prefs?.get(Prefs.CACHE_PLAYING_HERE) ?: false
-        val deviceName = prefs?.get(Prefs.CACHE_DEVICE_NAME) ?: "Bose Control"
+        val deviceName = if (connected) prefs?.get(Prefs.CACHE_DEVICE_NAME) ?: "Bose Control"
         val battery = Battery(
             left = prefs?.get(Prefs.CACHE_BAT_LEFT),
             right = prefs?.get(Prefs.CACHE_BAT_RIGHT),
@@ -195,7 +195,7 @@ class BoseWidget : GlanceAppWidget() {
         ) {
             Header(deviceName, battery, connected, link, playingHere)
 
-            if (starred.isEmpty()) {
+            if (!connected || starred.isEmpty()) {
                 Text(
                     " ",
                     style = TextStyle(
