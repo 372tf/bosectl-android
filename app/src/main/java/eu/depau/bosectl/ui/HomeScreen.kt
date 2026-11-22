@@ -177,8 +177,9 @@ fun HomeScreen(
                     ModeCardsSkeleton()
                 } else {
                     ModeCards(
-                        modes = state.starredModes.ifEmpty { state.modes.filter { !it.isFreeSlot } },
+                        modes = state.widgetModes,
                         currentIdx = state.currentModeIdx,
+
                         enabled = state.connected,
                         onSelect = { deviceAction { DeviceRepository.setMode(it) } },
                     )
