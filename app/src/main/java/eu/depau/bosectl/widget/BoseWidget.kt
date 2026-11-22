@@ -99,12 +99,12 @@ suspend fun publishWidgetPreview(context: Context) {
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
-// 4x2でも空間オーディオ入り2段レイアウトになるよう高さを調整
-private val VERTICAL_PADDING = 8.dp
+// 均等バランスになるよう各セクションの高さを調整
+private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
 private val HEADER_HEIGHT = 24.dp
-private val MODE_BUTTON_HEIGHT = 52.dp
-private val SPATIAL_HEIGHT = 32.dp
+private val MODE_BUTTON_HEIGHT = 62.dp
+private val SPATIAL_HEIGHT = 36.dp
 private val TOGGLE_HEIGHT = 38.dp
 private val STEPPER_HEIGHT = 28.dp
 private val CHIP_HEIGHT = 32.dp
@@ -195,7 +195,7 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 2x2専用レイアウト: スリム化した4モード(2x2) + 空間オーディオ(3列)
+            // 2x2専用レイアウト: 上下均等配置
             if (is2x2) {
                 val modes4 = starred.take(4)
                 val row1 = modes4.take(2)
@@ -207,8 +207,9 @@ class BoseWidget : GlanceAppWidget() {
                     Spacer(GlanceModifier.height(4.dp))
                     ModeGridRow(row2, currentMode, connected, GlanceModifier.height(28.dp))
                 }
-                Spacer(GlanceModifier.height(5.dp))
+                Spacer(GlanceModifier.height(6.dp))
                 CompactSpatialRow(spatial, connected, GlanceModifier.height(28.dp))
+                Spacer(GlanceModifier.defaultWeight())
                 return@Column
             }
 
@@ -223,7 +224,8 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            Spacer(GlanceModifier.defaultWeight())
+            // 4x2 / 3x2 / 4x3 レイアウト: ヘッダー直下の余白を詰めて均等配置
+            Spacer(GlanceModifier.height(6.dp))
             ModeButtonRow(
                 starred, currentMode, connected,
                 cols = modeSlots(size.width, MODE_BUTTON_MIN_WIDTH).let {
@@ -259,7 +261,7 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /** 2x2グリッド用のモード2列行（アイコン・ボタン高さをスリム化） */
+    /** 2x2グリッド用のモード2列行 */
     @Composable
     private fun ModeGridRow(
         modes: List<CachedMode>,
@@ -292,7 +294,7 @@ class BoseWidget : GlanceAppWidget() {
         }
     }
 
-    /** 2x2幅に収まるコンパクトな空間オーディオ3列行 */
+    /** 2x2幅に「Motion」まで省略されずに収まる空間オーディオ3列行 */
     @Composable
     private fun CompactSpatialRow(
         spatial: Int,
@@ -318,14 +320,13 @@ class BoseWidget : GlanceAppWidget() {
                                 SetSpatialAction.params(option.first)
                             )
                         )
-                        .fillMaxHeight()
-                        .padding(horizontal = 1.dp),
+                        .fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(option.third, selected, 11.dp)
-                    Spacer(GlanceModifier.width(2.dp))
-                    Text(option.second, style = chipText(selected, 9.5.sp), maxLines = 1)
+                    TintedIcon(option.third, selected, 9.dp)
+                    Spacer(GlanceModifier.width(1.5.dp))
+                    Text(option.second, style = chipText(selected, 9.sp), maxLines = 1)
                 }
             }
         }
@@ -512,13 +513,13 @@ class BoseWidget : GlanceAppWidget() {
                         .clickable(
                             actionRunCallback<SetModeAction>(SetModeAction.params(mode.idx))
                         )
-                        .padding(horizontal = 2.dp, vertical = 3.dp),
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(promptDrawable(mode.promptId), selected, 18.dp)
-                    Spacer(GlanceModifier.height(2.dp))
-                    Text(mode.name, style = chipText(selected, 10.5.sp), maxLines = 1)
+                    TintedIcon(promptDrawable(mode.promptId), selected, 20.dp)
+                    Spacer(GlanceModifier.height(3.dp))
+                    Text(mode.name, style = chipText(selected, 11.sp), maxLines = 1)
                 }
             }
             Overflow(modes, cols)
