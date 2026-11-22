@@ -102,7 +102,7 @@ suspend fun publishWidgetPreview(context: Context) {
 private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
 private val HEADER_HEIGHT = 24.dp
-private val MODE_BUTTON_HEIGHT = 62.dp
+private val MODE_BUTTON_HEIGHT = 52.dp
 private val SPATIAL_HEIGHT = 36.dp
 private val TOGGLE_HEIGHT = 38.dp
 private val STEPPER_HEIGHT = 28.dp
@@ -223,7 +223,7 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 4x2 / 3x2 / 4x3 レイアウト: 2x2と同じ下の余白バランスに統一
+            // 4x2 / 3x2 / 4x3 レイアウト
             Spacer(GlanceModifier.defaultWeight())
             ModeButtonRow(
                 starred, currentMode, connected,
@@ -516,12 +516,12 @@ class BoseWidget : GlanceAppWidget() {
                         .clickable(
                             actionRunCallback<SetModeAction>(SetModeAction.params(mode.idx))
                         )
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                        .padding(horizontal = 2.dp, vertical = 3.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TintedIcon(promptDrawable(mode.promptId), selected, 20.dp)
-                    Spacer(GlanceModifier.height(3.dp))
+                    TintedIcon(promptDrawable(mode.promptId), selected, 18.dp)
+                    Spacer(GlanceModifier.height(2.dp))
                     Text(mode.name, style = chipText(selected, 11.sp), maxLines = 1)
                 }
             }
