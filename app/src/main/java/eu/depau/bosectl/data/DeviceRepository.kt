@@ -7,10 +7,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.util.Log
 import eu.depau.bosectl.bmap.BmapTransport
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.appwidget.updateAll
 import eu.depau.bosectl.bmap.AudioSettings
 import eu.depau.bosectl.bmap.BatteryStatus
@@ -161,65 +158,14 @@ object DeviceRepository {
         if (!::context.isInitialized) context = appContext.applicationContext
     }
 
-    // デバイスごとの個別キャッシュキー生成ヘルパー
-    private fun devStrKey(mac: String, suffix: String) =
-        stringPreferencesKey("dev_${mac.uppercase()}_$suffix")
-    private fun devIntKey(mac: String, suffix: String) =
-        intPreferencesKey("dev_${mac.uppercase()}_$suffix")
-    private fun devBoolKey(mac: String, suffix: String) =
-        booleanPreferencesKey("dev_${mac.uppercase()}_$suffix")
-
     suspend fun savedDeviceMac(): String? =
         context.dataStore.data.first()[Prefs.DEVICE_MAC]
 
-    suspend fun setDevice(mac: String, fallbackName: String? = null) {
+    suspend fun setDevice(mac: String) {
         _state.value = BoseState()
-        context.dataStore.edit { prefs ->
-            prefs[Prefs.DEVICE_MAC] = mac
-            prefs[Prefs.CACHE_CONNECTED] = false
-            prefs[Prefs.CACHE_PLAYING_HERE] = false
-            prefs.remove(Prefs.CACHE_LINK)
-            prefs.remove(Prefs.LAST_SEEN_AT)
-            prefs.remove(Prefs.LAST_SEEN_AVAILABLE)
-
-            // 保存済みのデバイス別キャッシュがあれば復元する
-            val savedName = prefs[devStrKey(mac, "name")] ?: fallbackName
-            if (savedName != null) prefs[Prefs.CACHE_DEVICE_NAME] = savedName
-            else prefs.remove(Prefs.CACHE_DEVICE_NAME)
-
-            val savedStarred = prefs[devStrKey(mac, "starred")]
-            if (savedStarred != null) prefs[Prefs.CACHE_STARRED] = savedStarred
-            else prefs.remove(Prefs.CACHE_STARRED)
-
-            val savedMode = prefs[devIntKey(mac, "mode")]
-            if (savedMode != null) prefs[Prefs.CACHE_CURRENT_MODE] = savedMode
-            else prefs.remove(Prefs.CACHE_CURRENT_MODE)
-
-            val savedSpatial = prefs[devIntKey(mac, "spatial")]
-            if (savedSpatial != null) prefs[Prefs.CACHE_SPATIAL] = savedSpatial
-            else prefs.remove(Prefs.CACHE_SPATIAL)
-
-            val savedAnc = prefs[devBoolKey(mac, "anc")]
-            if (savedAnc != null) prefs[Prefs.CACHE_ANC] = savedAnc
-            else prefs.remove(Prefs.CACHE_ANC)
-
-            val savedCnc = prefs[devIntKey(mac, "cnc")]
-            if (savedCnc != null) prefs[Prefs.CACHE_CNC] = savedCnc
-            else prefs.remove(Prefs.CACHE_CNC)
-
-            val savedTouch = prefs[devBoolKey(mac, "touch")]
-            if (savedTouch != null) prefs[Prefs.CACHE_TOUCH] = savedTouch
-            else prefs.remove(Prefs.CACHE_TOUCH)
-
-            val savedBleId = prefs[devIntKey(mac, "ble_id")]
-            if (savedBleId != null) prefs[Prefs.DEVICE_BLE_PRODUCT_ID] = savedBleId
-            else prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
-
-            // バッテリー残量は古いデバイスの値が残らないよう一旦クリア
-            prefs.remove(Prefs.CACHE_BAT_LEFT)
-            prefs.remove(Prefs.CACHE_BAT_RIGHT)
-            prefs.remove(Prefs.CACHE_BAT_CASE)
-            prefs.remove(Prefs.CACHE_BAT_OVERALL)
+        context.dataStore.edit {
+            it.clear()
+            it[Prefs.DEVICE_MAC] = mac
         }
         disconnect()
     }
@@ -491,10 +437,7 @@ object DeviceRepository {
                 context.dataStore.edit {
                     it[Prefs.LAST_SEEN_AT] = System.currentTimeMillis()
                     it[Prefs.LAST_SEEN_AVAILABLE] = match.second.availableToConnect
-                    if (exact != null) {
-                        it[Prefs.DEVICE_BLE_PRODUCT_ID] = exact.second.bleProductId
-                        it[devIntKey(saved, "ble_id")] = exact.second.bleProductId
-                    }
+                    if (exact != null) it[Prefs.DEVICE_BLE_PRODUCT_ID] = exact.second.bleProductId
                 }
                 _state.value = _state.value.copy(
                     lastSeenAt = System.currentTimeMillis(),
@@ -896,32 +839,17 @@ object DeviceRepository {
     private suspend fun persistWidgetCache() {
         val s = _state.value
         context.dataStore.edit { prefs ->
-            val mac = prefs[Prefs.DEVICE_MAC]
             prefs[Prefs.CACHE_CONNECTED] = s.connected
             prefs[Prefs.CACHE_PLAYING_HERE] = s.playingHere
             s.link?.let { prefs[Prefs.CACHE_LINK] = it.id }
-            s.deviceName?.let {
-                prefs[Prefs.CACHE_DEVICE_NAME] = it
-                if (mac != null) prefs[devStrKey(mac, "name")] = it
-            }
-            s.currentModeIdx?.let {
-                prefs[Prefs.CACHE_CURRENT_MODE] = it
-                if (mac != null) prefs[devIntKey(mac, "mode")] = it
-            }
+            s.deviceName?.let { prefs[Prefs.CACHE_DEVICE_NAME] = it }
+            s.currentModeIdx?.let { prefs[Prefs.CACHE_CURRENT_MODE] = it }
             s.audioSettings?.let {
                 prefs[Prefs.CACHE_SPATIAL] = it.spatial.value
                 prefs[Prefs.CACHE_ANC] = it.ancToggle
                 prefs[Prefs.CACHE_CNC] = it.cncLevel
-                if (mac != null) {
-                    prefs[devIntKey(mac, "spatial")] = it.spatial.value
-                    prefs[devBoolKey(mac, "anc")] = it.ancToggle
-                    prefs[devIntKey(mac, "cnc")] = it.cncLevel
-                }
             }
-            s.touchControls?.let {
-                prefs[Prefs.CACHE_TOUCH] = it
-                if (mac != null) prefs[devBoolKey(mac, "touch")] = it
-            }
+            s.touchControls?.let { prefs[Prefs.CACHE_TOUCH] = it }
             s.battery?.let { b ->
                 // Stored per cell so the widget can pair each with its icon.
                 b.left?.let { prefs[Prefs.CACHE_BAT_LEFT] = it }
@@ -930,11 +858,9 @@ object DeviceRepository {
                 b.overall?.let { prefs[Prefs.CACHE_BAT_OVERALL] = it }
             }
             if (s.modes.isNotEmpty()) {
-                val encoded = encodeCachedModes(
+                prefs[Prefs.CACHE_STARRED] = encodeCachedModes(
                     s.starredModes.map { CachedMode(it.modeIdx, it.promptId, it.name) }
                 )
-                prefs[Prefs.CACHE_STARRED] = encoded
-                if (mac != null) prefs[devStrKey(mac, "starred")] = encoded
             }
         }
         runCatching { BoseWidget().updateAll(context) }
