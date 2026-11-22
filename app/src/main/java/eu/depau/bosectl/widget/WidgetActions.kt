@@ -100,19 +100,15 @@ class SwitchDeviceAction : ActionCallback {
             }
             val nextDevice = boseDevices[(currentIdx + 1) % boseDevices.size]
 
-            // 前の機器のバッテリー残量・製品IDキャッシュを消去してから切り替え
+            // 古いデバイスの状態とキャッシュをクリアしてから切り替え先をセット
+            DeviceRepository.setDevice(nextDevice.address)
+
             context.dataStore.edit { prefs ->
                 prefs[Prefs.CACHE_DEVICE_NAME] = nextDevice.name ?: "Switching..."
                 prefs[Prefs.CACHE_CONNECTED] = false
-                prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
-                prefs.remove(Prefs.CACHE_BAT_LEFT)
-                prefs.remove(Prefs.CACHE_BAT_RIGHT)
-                prefs.remove(Prefs.CACHE_BAT_CASE)
-                prefs.remove(Prefs.CACHE_BAT_OVERALL)
             }
             BoseWidget().updateAll(context)
 
-            DeviceRepository.setDevice(nextDevice.address)
             DeviceRepository.refresh()
         }
     }
