@@ -157,6 +157,7 @@ class BoseWidget : GlanceAppWidget() {
         val compact = size.height < BUTTONS_MIN_HEIGHT
         val showControls = size.height >= CONTROLS_MIN_HEIGHT
         val wideChips = size.width >= CHIP_ICON_MIN_WIDTH
+        val is4x2 = !is2x2 && !compact && !showControls && size.width >= 300.dp
 
         val connected = prefs?.get(Prefs.CACHE_CONNECTED) ?: false
         val link = prefs?.get(Prefs.CACHE_LINK)
@@ -232,7 +233,7 @@ class BoseWidget : GlanceAppWidget() {
                 },
                 modifier = GlanceModifier.height(MODE_BUTTON_HEIGHT),
             )
-            Spacer(GlanceModifier.height(GAP))
+            Spacer(GlanceModifier.height(if (is4x2) 12.dp else GAP))
             SpatialRow(
                 spatial, connected,
                 modifier = GlanceModifier.height(SPATIAL_HEIGHT),
