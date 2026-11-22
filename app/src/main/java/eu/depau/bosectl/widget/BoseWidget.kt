@@ -99,7 +99,6 @@ suspend fun publishWidgetPreview(context: Context) {
     Log.d("BoseWidget", "setWidgetPreviews -> $result")
 }
 
-// 均等バランスになるよう各セクションの高さを調整
 private val VERTICAL_PADDING = 10.dp
 private val HORIZONTAL_PADDING = 10.dp
 private val HEADER_HEIGHT = 24.dp
@@ -195,21 +194,21 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 2x2専用レイアウト: 上下均等配置
+            // 2x2専用レイアウト: 下の余白を半分に抑えた配置
             if (is2x2) {
                 val modes4 = starred.take(4)
                 val row1 = modes4.take(2)
                 val row2 = modes4.drop(2).take(2)
 
                 Spacer(GlanceModifier.defaultWeight())
-                ModeGridRow(row1, currentMode, connected, GlanceModifier.height(28.dp))
+                ModeGridRow(row1, currentMode, connected, GlanceModifier.height(29.dp))
                 if (row2.isNotEmpty()) {
-                    Spacer(GlanceModifier.height(4.dp))
-                    ModeGridRow(row2, currentMode, connected, GlanceModifier.height(28.dp))
+                    Spacer(GlanceModifier.height(5.dp))
+                    ModeGridRow(row2, currentMode, connected, GlanceModifier.height(29.dp))
                 }
                 Spacer(GlanceModifier.height(6.dp))
-                CompactSpatialRow(spatial, connected, GlanceModifier.height(28.dp))
-                Spacer(GlanceModifier.defaultWeight())
+                CompactSpatialRow(spatial, connected, GlanceModifier.height(29.dp))
+                Spacer(GlanceModifier.height(2.dp))
                 return@Column
             }
 
@@ -224,7 +223,7 @@ class BoseWidget : GlanceAppWidget() {
                 return@Column
             }
 
-            // 4x2 / 3x2 / 4x3 レイアウト: ヘッダー直下の余白を詰めて均等配置
+            // 4x2 / 3x2 / 4x3 レイアウト
             Spacer(GlanceModifier.height(6.dp))
             ModeButtonRow(
                 starred, currentMode, connected,
