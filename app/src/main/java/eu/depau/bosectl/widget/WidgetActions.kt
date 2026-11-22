@@ -1,14 +1,20 @@
 package eu.depau.bosectl.widget
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.util.Log
+import androidx.datastore.preferences.core.edit
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.ToggleableStateKey
+import androidx.glance.appwidget.updateAll
 import eu.depau.bosectl.bmap.Spatial
 import eu.depau.bosectl.data.DeviceRepository
+import eu.depau.bosectl.data.Prefs
+import eu.depau.bosectl.data.dataStore
 
 private const val TAG = "WidgetActions"
 
@@ -68,5 +74,42 @@ class AdjustCncAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val delta = parameters[KEY] ?: return
         run(context, "adjustCnc") { DeviceRepository.adjustCnc(delta) }
+    }
+}
+
+/** ペアリング済みの別Boseデバイスへ即座にトグル切り替えするアクション */
+class SwitchDeviceAction : ActionCallback {
+    @SuppressLint("MissingPermission")
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        run(context, "switchDevice") {
+            val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+                ?: return@run
+            val currentMac = DeviceRepository.savedDeviceMac()
+            val boseDevices = adapter.bondedDevices
+                ?.filter { it.name?.contains("Bose", ignoreCase = true) == true }
+                ?.sortedBy { it.address }
+                .orEmpty()
+
+            if (boseDevices.size < 2) {
+                Log.w(TAG, "No other bonded Bose device found (count=${boseDevices.size})")
+                return@run
+            }
+
+            val currentIdx = boseDevices.indexOfFirst {
+                it.address.equals(currentMac, ignoreCase = true)
+            }
+            val nextDevice = boseDevices[(currentIdx + 1) % boseDevices.size]
+
+            // 切り替え中であることをウィジェット上に即時表示
+            context.dataStore.edit { prefs ->
+                prefs[Prefs.CACHE_DEVICE_NAME] = nextDevice.name ?: "Switching..."
+                prefs[Prefs.CACHE_CONNECTED] = false
+                prefs.remove(Prefs.DEVICE_BLE_PRODUCT_ID)
+            }
+            BoseWidget().updateAll(context)
+
+            DeviceRepository.setDevice(nextDevice.address)
+            DeviceRepository.refresh()
+        }
     }
 }
