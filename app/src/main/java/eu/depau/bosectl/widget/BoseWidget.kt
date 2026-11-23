@@ -439,8 +439,8 @@ class BoseWidget : GlanceAppWidget() {
                     .defaultWeight()
                     .clickable(actionRunCallback<SwitchDeviceAction>()),
             )
+            LinkStatusIcon(connected, link, playingHere)
             if (connected) {
-                LinkStatusIcon(connected, link, playingHere)
                 BatteryCell(R.drawable.ic_earbud_left, battery.left)
                 BatteryCell(R.drawable.ic_earbud_right, battery.right)
                 BatteryCell(R.drawable.ic_earbud_case, battery.case)
